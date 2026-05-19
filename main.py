@@ -31,6 +31,7 @@ HELP_TEXT = """
 | `/transcript` | 进入多行模式粘贴客户对话录音文字稿 |
 | `/status` | 查看当前项目的所有交付文件 |
 | `/projects` | 列出所有项目 |
+| `/team` | 查看每个 agent 当前使用的 LLM provider 和模型 |
 | `/help` | 显示帮助信息 |
 | `/quit` 或 `/exit` | 退出程序 |
 
@@ -75,6 +76,39 @@ def show_status(agent: ElonAgent) -> None:
         table.add_row(filename, str(filepath))
 
     console.print(table)
+
+
+def show_team() -> None:
+    import config as cfg
+    configs = cfg.load_agent_configs()
+
+    table = Table(title="AI 团队配置", box=box.ROUNDED)
+    table.add_column("Agent", style="bold cyan")
+    table.add_column("角色", style="white")
+    table.add_column("Provider", style="green")
+    table.add_column("Model", style="yellow")
+    table.add_column("Max Tokens", style="dim")
+
+    roles = {
+        "elon": "CEO / 编排器",
+        "jobs": "产品经理",
+        "linux": "软件工程师",
+        "turing": "QA 工程师",
+        "bezos": "客户成功",
+    }
+
+    for role, label in roles.items():
+        c = configs.get(role, {})
+        table.add_row(
+            role,
+            label,
+            c.get("provider", "-"),
+            c.get("model", "-"),
+            str(c.get("max_tokens", "-")),
+        )
+
+    console.print(table)
+    console.print("[dim]提示：编辑 agents_config.yaml 即可切换任意 agent 的 LLM。[/dim]")
 
 
 def show_projects() -> None:
@@ -139,6 +173,9 @@ def main() -> None:
 
         elif user_input.lower() == "/projects":
             show_projects()
+
+        elif user_input.lower() == "/team":
+            show_team()
 
         else:
             console.print(f"\n[bold red]Elon[/bold red]:")

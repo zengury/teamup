@@ -1,26 +1,32 @@
 import os
 from pathlib import Path
+import yaml
 from dotenv import load_dotenv
 
 load_dotenv()
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-
 PROJECTS_DIR = Path("projects")
 PROJECTS_DIR.mkdir(exist_ok=True)
 
-AGENT_MODELS = {
-    "elon": "claude-opus-4-7",
-    "jobs": "claude-opus-4-7",
-    "linux": "claude-opus-4-7",
-    "turing": "claude-sonnet-4-6",
-    "bezos": "claude-sonnet-4-6",
-}
+_CONFIG_FILE = Path("agents_config.yaml")
 
-MAX_TOKENS = {
-    "elon": 16384,
-    "jobs": 8192,
-    "linux": 8192,
-    "turing": 8192,
-    "bezos": 8192,
-}
+
+def load_agent_configs() -> dict:
+    if not _CONFIG_FILE.exists():
+        raise FileNotFoundError(f"配置文件不存在: {_CONFIG_FILE}")
+    with _CONFIG_FILE.open("r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def get_agent_config(role: str) -> dict:
+    configs = load_agent_configs()
+    if role not in configs:
+        raise KeyError(f"agents_config.yaml 中找不到角色: {role}")
+    return configs[role]
+
+
+def get_api_key(env_name: str) -> str:
+    key = os.getenv(env_name, "")
+    if not key:
+        raise RuntimeError(f"环境变量 {env_name} 未设置，请检查 .env 文件")
+    return key

@@ -179,9 +179,17 @@ def _execute_tool(tool_name: str, tool_input: dict, project_name: str) -> str:
 
 class ElonAgent:
     def __init__(self, project_name: str = "default"):
-        self.client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-        self.model = config.AGENT_MODELS["elon"]
-        self.max_tokens = config.MAX_TOKENS["elon"]
+        cfg = config.get_agent_config("elon")
+        if cfg.get("provider", "anthropic") != "anthropic":
+            raise ValueError(
+                "Elon 必须使用 anthropic provider（需要 tool use + adaptive thinking）。"
+                "请在 agents_config.yaml 中将 elon.provider 设置为 anthropic。"
+            )
+        api_key_env = cfg.get("api_key_env", "ANTHROPIC_API_KEY")
+        self.client = anthropic.Anthropic(api_key=config.get_api_key(api_key_env))
+        self.model = cfg["model"]
+        self.max_tokens = cfg.get("max_tokens", 16384)
+        self.thinking_mode = cfg.get("thinking", "adaptive")
         self.project_name = project_name
         self.history: list[dict] = []
         self.system_prompt = self._load_system_prompt()
@@ -207,14 +215,21 @@ class ElonAgent:
             }
         ]
 
+        create_kwargs: dict = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "system": system_content,
+            "tools": TOOLS,
+        }
+        if self.thinking_mode == "adaptive":
+            create_kwargs["thinking"] = {"type": "adaptive"}
+        elif isinstance(self.thinking_mode, dict):
+            create_kwargs["thinking"] = self.thinking_mode
+
         while True:
             response = self.client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                thinking={"type": "adaptive"},
-                system=system_content,
-                tools=TOOLS,
                 messages=self.history,
+                **create_kwargs,
             )
 
             self.history.append({"role": "assistant", "content": response.content})
