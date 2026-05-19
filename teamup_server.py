@@ -23,9 +23,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import threading
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +33,7 @@ import anthropic
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
@@ -60,12 +60,14 @@ def load_clients() -> dict:
 
 
 def save_clients(clients: dict) -> None:
+    # Must be called under CLIENTS_LOCK
     CLIENTS_FILE.write_text(
         json.dumps(clients, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
 
 CLIENTS: dict = load_clients()
+CLIENTS_LOCK = threading.Lock()
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -75,6 +77,7 @@ CLIENTS: dict = load_clients()
 EVENT_LOOP: asyncio.AbstractEventLoop | None = None
 EVENT_QUEUE: asyncio.Queue | None = None
 WEBSOCKETS: set[WebSocket] = set()
+ACTIVE_TURN = False   # 是否有一轮对话正在进行中
 # 简单的服务端状态镜像，新连进来的浏览器能立刻看到上次的状态
 LAST_STATE = {
     "current_client": None,
@@ -103,6 +106,7 @@ def push_event(event_type: str, **payload) -> None:
 
 
 def _apply_local_state(msg: dict) -> None:
+    global ACTIVE_TURN
     t = msg["type"]
     if t == "agent_status":
         name = msg.get("agent")
@@ -112,11 +116,12 @@ def _apply_local_state(msg: dict) -> None:
                 "activity": msg.get("activity", ""),
             }
     elif t == "turn_started":
-        # 一轮开始：所有非唐僧重置为待命，唐僧 thinking
+        ACTIVE_TURN = True
         for k in LAST_STATE["agent_status"]:
             LAST_STATE["agent_status"][k] = {"status": "idle", "activity": ""}
         LAST_STATE["agent_status"]["唐僧"] = {"status": "thinking", "activity": "理解需求"}
-    elif t in ("session_idle", "turn_ended"):
+    elif t in ("session_idle", "turn_ended", "session_terminated"):
+        ACTIVE_TURN = False
         for k in LAST_STATE["agent_status"]:
             LAST_STATE["agent_status"][k] = {"status": "idle", "activity": ""}
 
@@ -127,11 +132,13 @@ def _apply_local_state(msg: dict) -> None:
 
 
 def ensure_memory_store(client_name: str) -> str:
-    info = CLIENTS.setdefault(client_name, {})
-    if "memory_store_id" in info:
+    with CLIENTS_LOCK:
+        info = CLIENTS.setdefault(client_name, {})
+        msid = info.get("memory_store_id")
+    if msid:
         try:
-            client.beta.memory_stores.retrieve(info["memory_store_id"])
-            return info["memory_store_id"]
+            client.beta.memory_stores.retrieve(msid)
+            return msid
         except anthropic.NotFoundError:
             log.info("memory store 失效，重建: %s", client_name)
 
@@ -142,8 +149,9 @@ def ensure_memory_store(client_name: str) -> str:
             "已确认需求、历史决策、未解决问题、交付物索引。"
         ),
     )
-    info["memory_store_id"] = store.id
-    save_clients(CLIENTS)
+    with CLIENTS_LOCK:
+        CLIENTS.setdefault(client_name, {})["memory_store_id"] = store.id
+        save_clients(CLIENTS)
     return store.id
 
 
@@ -165,14 +173,16 @@ def create_session(client_name: str) -> str:
             }
         ],
     )
-    CLIENTS[client_name]["current_session_id"] = session.id
-    save_clients(CLIENTS)
+    with CLIENTS_LOCK:
+        CLIENTS.setdefault(client_name, {})["current_session_id"] = session.id
+        save_clients(CLIENTS)
     return session.id
 
 
 def get_or_create_session(client_name: str) -> str:
-    info = CLIENTS.get(client_name, {})
-    sid = info.get("current_session_id")
+    with CLIENTS_LOCK:
+        info = CLIENTS.get(client_name, {})
+        sid = info.get("current_session_id")
     if sid:
         try:
             sess = client.beta.sessions.retrieve(sid)
@@ -314,17 +324,19 @@ def list_session_files(session_id: str) -> list[dict]:
 # FastAPI
 # ────────────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="TeamUp Control Plane")
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-
-@app.on_event("startup")
-async def _startup() -> None:
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
     global EVENT_LOOP, EVENT_QUEUE
     EVENT_LOOP = asyncio.get_running_loop()
     EVENT_QUEUE = asyncio.Queue()
     asyncio.create_task(_broadcast_worker())
     log.info("TeamUp 控制台已启动 → http://localhost:8000")
+    yield
+
+
+app = FastAPI(title="TeamUp Control Plane", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 async def _broadcast_worker() -> None:
@@ -348,10 +360,13 @@ async def index() -> FileResponse:
 
 @app.get("/api/state")
 async def api_state() -> dict:
+    with CLIENTS_LOCK:
+        clients = list(CLIENTS.keys())
     return {
-        "clients": list(CLIENTS.keys()),
+        "clients": clients,
         "current_client": LAST_STATE["current_client"],
         "current_session": LAST_STATE["current_session"],
+        "active_turn": ACTIVE_TURN,
         "agent_status": LAST_STATE["agent_status"],
         "team": [
             {"role": "tangseng", "name": "唐僧", "title": "协调者", "icon": "🙏", "model": "claude-opus-4-5"},
@@ -363,21 +378,38 @@ async def api_state() -> dict:
     }
 
 
+async def _select_client(name: str, force_new: bool = False) -> dict:
+    """Shared logic for select and new-session endpoints (blocking I/O → thread)."""
+    if force_new:
+        sid = await asyncio.to_thread(create_session, name)
+    else:
+        sid = await asyncio.to_thread(get_or_create_session, name)
+    LAST_STATE["current_client"] = name
+    LAST_STATE["current_session"] = sid
+    push_event("client_selected", client=name, session_id=sid)
+    try:
+        files = await asyncio.to_thread(list_session_files, sid)
+        push_event("files_updated", files=files)
+    except Exception as e:
+        log.warning("拉取 file list 失败: %s", e)
+    return {"client": name, "session_id": sid}
+
+
 @app.post("/api/client/select")
 async def api_client_select(payload: dict) -> dict:
     name = (payload or {}).get("name", "").strip()
     if not name:
         raise HTTPException(400, "name required")
-    sid = get_or_create_session(name)
-    LAST_STATE["current_client"] = name
-    LAST_STATE["current_session"] = sid
-    push_event("client_selected", client=name, session_id=sid)
-    try:
-        files = list_session_files(sid)
-        push_event("files_updated", files=files)
-    except Exception as e:
-        log.warning("拉取 file list 失败: %s", e)
-    return {"client": name, "session_id": sid}
+    return await _select_client(name, force_new=False)
+
+
+@app.post("/api/client/new")
+async def api_client_new(payload: dict) -> dict:
+    """强制开一个全新 session（即使旧 session 还活着）。"""
+    name = (payload or {}).get("name", "").strip()
+    if not name:
+        raise HTTPException(400, "name required")
+    return await _select_client(name, force_new=True)
 
 
 @app.post("/api/message")
@@ -385,6 +417,8 @@ async def api_message(payload: dict) -> dict:
     text = (payload or {}).get("text", "").strip()
     if not text:
         raise HTTPException(400, "text required")
+    if ACTIVE_TURN:
+        raise HTTPException(409, "团队还在取经，请稍候")
     sid = LAST_STATE["current_session"]
     if not sid:
         raise HTTPException(400, "请先选择客户")
@@ -399,21 +433,26 @@ async def api_files() -> list[dict]:
     if not sid:
         return []
     try:
-        return list_session_files(sid)
+        return await asyncio.to_thread(list_session_files, sid)
     except Exception as e:
         raise HTTPException(500, str(e))
 
 
 @app.get("/api/file/{file_id}")
-async def api_file_download(file_id: str):
-    try:
+async def api_file_download(file_id: str, filename: str = ""):
+    def _download():
         content = client.beta.files.download(file_id)
+        return content.read() if hasattr(content, "read") else bytes(content)
+    try:
+        data = await asyncio.to_thread(_download)
     except Exception as e:
         raise HTTPException(404, str(e))
-    # content has read() / iter_bytes() depending on SDK version; try read
-    data = content.read() if hasattr(content, "read") else bytes(content)
-    return StreamingResponse(iter([data]), media_type="application/octet-stream",
-                             headers={"Content-Disposition": f'attachment; filename="{file_id}"'})
+    safe_name = filename or file_id
+    return StreamingResponse(
+        iter([data]),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+    )
 
 
 @app.websocket("/ws")
@@ -422,7 +461,15 @@ async def ws_endpoint(ws: WebSocket) -> None:
     WEBSOCKETS.add(ws)
     # 把当前状态先推一份给新连接
     try:
-        await ws.send_json({"type": "hello", "ts": time.time(), "state": LAST_STATE})
+        with CLIENTS_LOCK:
+            clients = list(CLIENTS.keys())
+        await ws.send_json({
+            "type": "hello",
+            "ts": time.time(),
+            "state": LAST_STATE,
+            "active_turn": ACTIVE_TURN,
+            "clients": clients,
+        })
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:

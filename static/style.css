@@ -154,6 +154,16 @@ button {
 button:hover { background: var(--vermilion-soft); }
 button:disabled { background: var(--ink-faint); cursor: not-allowed; }
 
+button.secondary {
+  background: transparent;
+  color: var(--ink-light);
+  border: 1px solid var(--rice-dark);
+}
+button.secondary:hover {
+  background: var(--rice-dark);
+  color: var(--ink);
+}
+
 button.mini {
   padding: 2px 8px;
   font-size: 11px;

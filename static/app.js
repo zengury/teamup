@@ -1,18 +1,14 @@
 /* ============================================================
    TeamUp 控制台 · 浏览器逻辑
-   - WebSocket 接收事件流
-   - 更新五个 agent 卡片状态
-   - 动态绘制 SVG 流动线（任务委派 / 回报）
-   - 聊天 + 文件 + 事件日志
    ============================================================ */
 
 const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
 
 const STATE = {
   currentClient: null,
   currentSession: null,
-  flowLines: new Map(), // 当前活跃的 SVG line: key="A->B" -> {el, expiresAt}
+  activeTurn: false,
+  flowLines: new Map(), // key="A→B" → {el, expiresAt}
 };
 
 // ────────────────────────────────────────────────────────────
@@ -23,39 +19,36 @@ async function init() {
   await refreshState();
   bindUI();
   connectWS();
-  // 定时清理过期的流动线
   setInterval(cleanupFlowLines, 500);
-  // 监听窗口 resize 重绘箭头
-  window.addEventListener("resize", () => {
-    for (const [key, info] of STATE.flowLines) {
-      const [from, to] = key.split("→");
-      updateLinePath(info.el, from, to);
-    }
-  });
+  window.addEventListener("resize", redrawFlowLines);
 }
 
 async function refreshState() {
   const r = await fetch("/api/state");
   const s = await r.json();
-  const select = $("#clientSelect");
-  select.innerHTML = '<option value="">— 请选择 —</option>';
-  for (const c of s.clients) {
-    const opt = document.createElement("option");
-    opt.value = c; opt.textContent = c;
-    select.appendChild(opt);
-  }
+  populateClientSelect(s.clients, s.current_client);
   if (s.current_client) {
-    select.value = s.current_client;
     STATE.currentClient = s.current_client;
     STATE.currentSession = s.current_session;
     updateSessionPill(true, s.current_session);
   }
-  // 应用上次的 agent 状态
   for (const [name, info] of Object.entries(s.agent_status || {})) {
     updateAgentStatus(name, info.status, info.activity);
   }
-  // 拉一次文件
+  setTurnActive(s.active_turn || false);
   refreshFiles();
+}
+
+function populateClientSelect(clients, selected) {
+  const sel = $("#clientSelect");
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— 请选择 —</option>';
+  for (const c of (clients || [])) {
+    const opt = document.createElement("option");
+    opt.value = c; opt.textContent = c;
+    sel.appendChild(opt);
+  }
+  sel.value = selected || prev || "";
 }
 
 function bindUI() {
@@ -72,18 +65,17 @@ function bindUI() {
     $("#newClientInput").value = "";
   });
 
-  $("#chatForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    sendMessage();
+  $("#newSessionBtn").addEventListener("click", async () => {
+    if (!STATE.currentClient) { alert("请先选择一个客户"); return; }
+    if (STATE.activeTurn) { alert("团队正在取经，请稍候再开新局"); return; }
+    if (!confirm(`为「${STATE.currentClient}」开启全新 session？\n当前 session 将不再使用（历史记忆仍保留）。`)) return;
+    await newSession(STATE.currentClient);
   });
 
+  $("#chatForm").addEventListener("submit", (e) => { e.preventDefault(); sendMessage(); });
   $("#chatInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
-
   $("#refreshFilesBtn").addEventListener("click", refreshFiles);
 }
 
@@ -93,18 +85,42 @@ async function selectClient(name) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
   });
+  if (!r.ok) { addChat("system", `选择客户失败: ${await r.text()}`); return; }
   const data = await r.json();
+  _applyClientSelected(name, data.session_id);
+}
+
+async function newSession(name) {
+  const r = await fetch("/api/client/new", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!r.ok) { addChat("system", `开新局失败: ${await r.text()}`); return; }
+  const data = await r.json();
+  _applyClientSelected(name, data.session_id);
+  addChat("system", `已为「${name}」开启新局 ✦`);
+}
+
+function _applyClientSelected(name, sessionId) {
   STATE.currentClient = name;
-  STATE.currentSession = data.session_id;
-  updateSessionPill(true, data.session_id);
-  addChat("system", `已切换到客户「${name}」 — session: ${data.session_id}`);
-  await refreshState();
+  STATE.currentSession = sessionId;
+  updateSessionPill(true, sessionId);
+  // 确保客户出现在下拉菜单中
+  const sel = $("#clientSelect");
+  if (!Array.from(sel.options).find(o => o.value === name)) {
+    const opt = document.createElement("option");
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  }
+  sel.value = name;
 }
 
 async function sendMessage() {
   const text = $("#chatInput").value.trim();
   if (!text) return;
   if (!STATE.currentClient) { alert("请先选择客户"); return; }
+  if (STATE.activeTurn) { alert("团队还在取经，请稍候再发"); return; }
   $("#chatInput").value = "";
   addChat("user", text);
   try {
@@ -135,36 +151,45 @@ function connectWS() {
     setTimeout(connectWS, 3000);
   };
   ws.onerror = () => {};
-  ws.onmessage = (e) => {
-    try { handleEvent(JSON.parse(e.data)); } catch {}
-  };
+  ws.onmessage = (e) => { try { handleEvent(JSON.parse(e.data)); } catch {} };
 }
 
 function handleEvent(msg) {
   const t = msg.type;
 
   if (t === "hello") {
+    // 恢复服务端最新状态（重载页面后用）
+    const s = msg.state || {};
+    populateClientSelect(msg.clients || [], s.current_client);
+    if (s.current_client) {
+      STATE.currentClient = s.current_client;
+      STATE.currentSession = s.current_session;
+      updateSessionPill(true, s.current_session);
+    }
+    for (const [name, info] of Object.entries(s.agent_status || {})) {
+      updateAgentStatus(name, info.status, info.activity);
+    }
+    setTurnActive(msg.active_turn || false);
     return;
   }
 
-  if (t === "user_message") {
-    // 服务端 echo 的用户消息：UI 已经显示，跳过
-    return;
-  }
+  if (t === "user_message") return; // 已在 sendMessage 里显示
 
   if (t === "turn_started") {
+    setTurnActive(true);
     addEvent("system", `▶ 新一轮：${truncate(msg.user_text, 30)}`);
     updateAgentStatus("唐僧", "thinking", "理解需求");
+    lastAgentMsgEl = null; lastAgentMsgName = null;
     return;
   }
 
   if (t === "turn_ended") {
+    setTurnActive(false);
     addEvent("system", "■ 本轮结束");
     return;
   }
 
   if (t === "agent_text") {
-    // 唐僧的文本（流式追加）
     appendAgentChat(msg.agent, msg.text);
     return;
   }
@@ -175,28 +200,28 @@ function handleEvent(msg) {
   }
 
   if (t === "thread_created") {
-    addEvent("delegation", `🪷 唐僧召见 <span class="who">${msg.agent}</span>`);
+    addEvent("delegation", `🪷 唐僧召见 <span class="who">${esc(msg.agent)}</span>`);
     return;
   }
 
   if (t === "delegation") {
     addEvent("delegation",
-      `<span class="who">唐僧</span>→ <span class="who">${msg.to_agent}</span>: ${truncate(msg.text, 50)}`);
+      `<span class="who">唐僧</span> → <span class="who">${esc(msg.to_agent)}</span>: ${esc(truncate(msg.text, 50))}`);
     drawFlow("唐僧", msg.to_agent, "outbound");
-    addChat("agent", `[唐僧 → ${msg.to_agent}]\n${truncate(msg.text, 200)}`, "唐僧");
+    addChat("agent", `唐僧 → ${msg.to_agent}\n${truncate(msg.text, 300)}`, "唐僧");
     return;
   }
 
   if (t === "delegation_reply") {
     addEvent("reply",
-      `<span class="who">${msg.from_agent}</span> 交付 → <span class="who">唐僧</span>: ${truncate(msg.text, 50)}`);
+      `<span class="who">${esc(msg.from_agent)}</span> 交付 → <span class="who">唐僧</span>: ${esc(truncate(msg.text, 50))}`);
     drawFlow(msg.from_agent, "唐僧", "inbound");
-    addChat("agent", `[${msg.from_agent} → 唐僧]\n${truncate(msg.text, 200)}`, msg.from_agent);
+    addChat("agent", `${msg.from_agent} → 唐僧\n${truncate(msg.text, 300)}`, msg.from_agent);
     return;
   }
 
   if (t === "tool_use") {
-    addEvent("tool", `<span class="who">${msg.agent}</span> 🔧 ${msg.tool}`);
+    addEvent("tool", `<span class="who">${esc(msg.agent)}</span> 🔧 ${esc(msg.tool)}`);
     return;
   }
 
@@ -211,26 +236,44 @@ function handleEvent(msg) {
   }
 
   if (t === "session_idle") {
+    setTurnActive(false);
     addEvent("system", "✓ 取经队伍待命中");
     return;
   }
 
   if (t === "session_terminated") {
+    setTurnActive(false);
     addEvent("error", "Session 已终止");
     updateSessionPill(false);
     return;
   }
 
   if (t === "error") {
-    addEvent("error", "❌ " + (msg.message || "未知错误"));
-    addChat("system", "错误: " + msg.message);
+    setTurnActive(false);
+    addEvent("error", "❌ " + esc(msg.message || "未知错误"));
+    addChat("system", "错误: " + (msg.message || ""));
     return;
   }
 
   if (t === "client_selected") {
-    addEvent("system", `客户 ${msg.client} session=${msg.session_id}`);
+    addEvent("system", `客户「${esc(msg.client)}」session ···${(msg.session_id || "").slice(-6)}`);
     return;
   }
+}
+
+// ────────────────────────────────────────────────────────────
+// 发送锁定
+// ────────────────────────────────────────────────────────────
+
+function setTurnActive(active) {
+  STATE.activeTurn = active;
+  const btn = $("#sendBtn");
+  const ta = $("#chatInput");
+  btn.disabled = active;
+  btn.textContent = active ? "取经中…" : "送上路";
+  ta.placeholder = active
+    ? "团队正在取经，请等候…"
+    : "向唐僧描述客户需求…\n或粘贴录音文字稿，唐僧会派徒弟们各司其职。";
 }
 
 // ────────────────────────────────────────────────────────────
@@ -238,12 +281,8 @@ function handleEvent(msg) {
 // ────────────────────────────────────────────────────────────
 
 const STATUS_LABEL = {
-  idle: "待命",
-  thinking: "思考中",
-  working: "工作中",
-  delegating: "派任务",
-  speaking: "回话中",
-  delivered: "已交付",
+  idle: "待命", thinking: "思考中", working: "工作中",
+  delegating: "派任务", speaking: "回话中", delivered: "已交付",
 };
 
 function updateAgentStatus(name, status, activity) {
@@ -251,18 +290,10 @@ function updateAgentStatus(name, status, activity) {
   if (!card) return;
   const statusEl = card.querySelector(".agent-status");
   const actEl = card.querySelector(".agent-activity");
-
-  // 重置 class，再加新的
   statusEl.className = "agent-status " + (status || "idle");
   statusEl.textContent = STATUS_LABEL[status] || status || "待命";
-
   if (typeof activity === "string") actEl.textContent = activity;
-
-  if (status && status !== "idle") {
-    card.classList.add("active");
-  } else {
-    card.classList.remove("active");
-  }
+  card.classList.toggle("active", !!(status && status !== "idle"));
 }
 
 // ────────────────────────────────────────────────────────────
@@ -274,56 +305,60 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 function drawFlow(from, to, direction) {
   const key = `${from}→${to}`;
   let info = STATE.flowLines.get(key);
-
   if (!info) {
     const svg = $("#flowSvg");
-    const line = document.createElementNS(SVG_NS, "path");
-    line.classList.add("flow-line", direction);
-    svg.appendChild(line);
-    info = { el: line, expiresAt: 0 };
+    const path = document.createElementNS(SVG_NS, "path");
+    path.classList.add("flow-line", direction);
+    svg.appendChild(path);
+    info = { el: path, direction, from, to, expiresAt: 0, fading: false };
     STATE.flowLines.set(key, info);
   }
-  info.expiresAt = Date.now() + 4000;
-  updateLinePath(info.el, from, to);
+  info.direction = direction;
+  info.el.className.baseVal = "flow-line " + direction; // refresh class if direction changed
+  info.expiresAt = Date.now() + 5000;
+  info.fading = false;
+  _updatePath(info.el, from, to);
 }
 
-function updateLinePath(pathEl, fromName, toName) {
+function _updatePath(pathEl, fromName, toName) {
   const svg = $("#flowSvg");
   const svgBox = svg.getBoundingClientRect();
   const fromCard = document.querySelector(`.agent-card[data-agent="${fromName}"]`);
   const toCard = document.querySelector(`.agent-card[data-agent="${toName}"]`);
-  if (!fromCard || !toCard) return;
-  const a = centerOf(fromCard, svgBox);
-  const b = centerOf(toCard, svgBox);
-  // 用贝塞尔曲线让线条有水墨般的弯度
-  const dx = b.x - a.x, dy = b.y - a.y;
-  const cx = (a.x + b.x) / 2 + dy * 0.2;
-  const cy = (a.y + b.y) / 2 - dx * 0.2;
-  pathEl.setAttribute("d", `M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`);
-
-  // 设置 SVG viewBox 匹配真实尺寸（首次绘制时）
+  if (!fromCard || !toCard || !svgBox.width) return;
   svg.setAttribute("viewBox", `0 0 ${svgBox.width} ${svgBox.height}`);
+  const a = cardCenter(fromCard, svgBox);
+  const b = cardCenter(toCard, svgBox);
+  // 贝塞尔曲线 — 弯度像水墨笔触
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const cx = (a.x + b.x) / 2 + dy * 0.25;
+  const cy = (a.y + b.y) / 2 - dx * 0.25;
+  pathEl.setAttribute("d", `M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`);
 }
 
-function centerOf(el, svgBox) {
+function cardCenter(el, svgBox) {
   const r = el.getBoundingClientRect();
-  return {
-    x: r.left + r.width / 2 - svgBox.left,
-    y: r.top + r.height / 2 - svgBox.top,
-  };
+  return { x: r.left + r.width / 2 - svgBox.left, y: r.top + r.height / 2 - svgBox.top };
 }
 
 function cleanupFlowLines() {
   const now = Date.now();
   for (const [key, info] of STATE.flowLines) {
-    if (now > info.expiresAt) {
-      info.el.classList.add("fading");
+    if (!info.fading && now > info.expiresAt) {
+      info.fading = true;
+      info.el.style.transition = "opacity 1s";
+      info.el.style.opacity = "0";
       setTimeout(() => {
         info.el.remove();
         STATE.flowLines.delete(key);
       }, 1000);
-      info.expiresAt = Infinity;
     }
+  }
+}
+
+function redrawFlowLines() {
+  for (const [key, info] of STATE.flowLines) {
+    _updatePath(info.el, info.from, info.to);
   }
 }
 
@@ -343,17 +378,16 @@ function addChat(kind, text, who) {
     w.className = "who"; w.textContent = who;
     el.appendChild(w);
   }
-  const t = document.createElement("div");
-  t.textContent = text;
-  el.appendChild(t);
+  const body = document.createElement("div");
+  body.className = "body"; body.textContent = text;
+  el.appendChild(body);
   log.appendChild(el);
   log.scrollTop = log.scrollHeight;
-  lastAgentMsgEl = null; // 普通追加后流式重置
-  return el;
+  // 普通消息之后清空流式引用
+  lastAgentMsgEl = null; lastAgentMsgName = null;
 }
 
 function appendAgentChat(who, text) {
-  // 同一位 agent 的连续 text 累加到一条
   const log = $("#chatLog");
   if (!lastAgentMsgEl || lastAgentMsgName !== who) {
     const el = document.createElement("div");
@@ -361,11 +395,11 @@ function appendAgentChat(who, text) {
     const w = document.createElement("div");
     w.className = "who"; w.textContent = who;
     el.appendChild(w);
-    const t = document.createElement("div");
-    t.className = "body"; t.textContent = text;
-    el.appendChild(t);
+    const body = document.createElement("div");
+    body.className = "body"; body.textContent = text;
+    el.appendChild(body);
     log.appendChild(el);
-    lastAgentMsgEl = t;
+    lastAgentMsgEl = body;
     lastAgentMsgName = who;
   } else {
     lastAgentMsgEl.textContent += text;
@@ -380,10 +414,9 @@ function appendAgentChat(who, text) {
 async function refreshFiles() {
   if (!STATE.currentSession) return;
   try {
-    const r = await fetch("/api/files");
-    const files = await r.json();
+    const files = await fetch("/api/files").then(r => r.json());
     renderFiles(files);
-  } catch (e) {}
+  } catch {}
 }
 
 function renderFiles(files) {
@@ -396,13 +429,11 @@ function renderFiles(files) {
   for (const f of files) {
     const el = document.createElement("div");
     el.className = "file-item";
-    el.innerHTML = `
-      <span class="file-name">${escapeHtml(f.name)}</span>
-      <span>
-        <span class="file-size">${formatSize(f.size)}</span>
-        <a href="/api/file/${encodeURIComponent(f.id)}" download="${escapeHtml(f.name)}">下载</a>
-      </span>
-    `;
+    const url = `/api/file/${encodeURIComponent(f.id)}?filename=${encodeURIComponent(f.name)}`;
+    el.innerHTML =
+      `<span class="file-name">${esc(f.name)}</span>` +
+      `<span><span class="file-size">${fmtSize(f.size)}</span>` +
+      ` <a href="${url}" download="${esc(f.name)}">下载</a></span>`;
     list.appendChild(el);
   }
 }
@@ -423,45 +454,37 @@ function addEvent(kind, html) {
   body.innerHTML = html;
   el.appendChild(body);
   strip.appendChild(el);
-  // 保持最多 40 条，且自动滚到右侧
-  while (strip.children.length > 40) strip.removeChild(strip.firstChild);
+  while (strip.children.length > 60) strip.removeChild(strip.firstChild);
   strip.scrollLeft = strip.scrollWidth;
 }
 
 // ────────────────────────────────────────────────────────────
-// 工具
+// 工具函数
 // ────────────────────────────────────────────────────────────
 
 function updateSessionPill(active, sid) {
   const pill = $("#sessionPill");
-  if (active) {
-    pill.classList.add("active");
-    pill.textContent = sid ? `session · ${sid.slice(-6)}` : "运行中";
-  } else {
-    pill.classList.remove("active");
-    pill.textContent = "未开始";
-  }
+  pill.classList.toggle("active", !!active);
+  pill.textContent = active ? `session · ${(sid || "").slice(-6)}` : "未开始";
 }
 
 function truncate(text, n) {
   if (!text) return "";
-  text = String(text).replace(/\s+/g, " ");
+  text = String(text).replace(/\s+/g, " ").trim();
   return text.length > n ? text.slice(0, n) + "…" : text;
 }
 
-function formatSize(n) {
+function fmtSize(n) {
   if (!n) return "—";
   if (n < 1024) return n + " B";
-  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
-  return (n / 1024 / 1024).toFixed(1) + " MB";
+  if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+  return (n / 1048576).toFixed(1) + " MB";
 }
 
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function esc(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 init();
