@@ -1,5 +1,5 @@
-name: Turing
+name: 沙僧
 model: claude-sonnet-4-6
-system_prompt_file: prompts/turing.md
+system_prompt_file: prompts/shawujing.md
 tools:
   - type: agent_toolset_20260401

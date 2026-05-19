@@ -1,6 +1,6 @@
-name: Jobs
-model: claude-opus-4-7
-system_prompt_file: prompts/jobs.md
+name: 八戒
+model: claude-sonnet-4-6
+system_prompt_file: prompts/bajie.md
 tools:
   - type: agent_toolset_20260401
 skills:

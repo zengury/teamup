@@ -3,8 +3,8 @@ TeamUp — Managed Agents 一次性 setup 脚本
 
 读取 agents_yaml/ 下的定义，在 Anthropic Managed Agents 平台创建：
   - 1 个 environment
-  - 4 个专业 agent（jobs / linux / turing / bezos）
-  - 1 个 coordinator agent（elon），其 multiagent.agents 引用上面四位
+  - 4 个专业 agent（bajie / wukong / shawujing / bailongma）
+  - 1 个 coordinator agent（tangseng），其 multiagent.agents 引用上面四位
 
 创建后把 ID 写到 .teamup_ids.json，供 teamup_managed.py 在运行时加载。
 
@@ -15,7 +15,7 @@ TeamUp — Managed Agents 一次性 setup 脚本
     cp .env.example .env  # 填入 ANTHROPIC_API_KEY
     python setup_managed.py
 
-可选：本脚本也可以替换成 `ant beta:agents create < agents_yaml/jobs.agent.yaml`
+可选：本脚本也可以替换成 `ant beta:agents create < agents_yaml/bajie.agent.yaml`
 等 CLI 命令（推荐用于 CI/CD），见 https://platform.claude.com/docs/en/api/sdks/cli
 """
 
@@ -121,20 +121,22 @@ def main() -> None:
     ensure_environment(ids)
 
     console.print("\n[bold]第一步: 创建专业 agent[/bold]")
-    for role in ["jobs", "linux", "turing", "bezos"]:
+    for role in ["bajie", "wukong", "shawujing", "bailongma"]:
         ensure_agent(role, ids)
 
-    console.print("\n[bold]第二步: 创建协调者 Elon（引用上面 4 位）[/bold]")
-    elon_cfg = load_yaml("elon.agent.yaml")
-    subagent_names = elon_cfg.get("multiagent_subagents", [])
+    console.print("\n[bold]第二步: 创建协调者唐僧（引用上面 4 位）[/bold]")
+    tangseng_cfg = load_yaml("tangseng.agent.yaml")
+    subagent_names = tangseng_cfg.get("multiagent_subagents", [])
     roster = [ids["agent_ids"][name] for name in subagent_names]
     if not roster:
-        raise ValueError("elon.agent.yaml 中 multiagent_subagents 为空")
-    ensure_agent("elon", ids, multiagent_resolved=roster)
+        raise ValueError("tangseng.agent.yaml 中 multiagent_subagents 为空")
+    ensure_agent("tangseng", ids, multiagent_resolved=roster)
 
     console.print("\n[bold green]✅ Setup 完成[/bold green]")
     console.print(f"所有 ID 已写入 [cyan]{IDS_FILE}[/cyan]")
     console.print("\n下一步: [bold]python teamup_managed.py[/bold]")
+    console.print("\n团队阵容:")
+    console.print("  唐僧（协调者） · 八戒（产品） · 猴哥（工程） · 沙僧（QA） · 白龙马（客户成功）")
 
 
 if __name__ == "__main__":

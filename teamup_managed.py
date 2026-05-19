@@ -1,8 +1,8 @@
 """
 TeamUp — Managed Agents 运行时 CLI
 
-启动一个对话循环，让顾问与 Elon（CEO/编排器）交互。Elon 在 Anthropic 云端运行，
-会自动委派 Jobs / Linux / Turing / Bezos。每个客户有独立的 session + memory store，
+启动一个对话循环，让顾问与唐僧（协调者）交互。唐僧在 Anthropic 云端运行，
+会自动委派八戒 / 猴哥 / 沙僧 / 白龙马。每个客户有独立的 session + memory store，
 跨对话保留长期上下文，交付物保存到 session 容器的 /mnt/session/outputs/。
 
 前置: 先跑过 `python setup_managed.py`，生成 .teamup_ids.json。
@@ -101,7 +101,7 @@ def ensure_memory_store(client_name: str) -> str:
 def create_session(client_name: str) -> str:
     memory_store_id = ensure_memory_store(client_name)
     session = client.beta.sessions.create(
-        agent=IDS["agent_ids"]["elon"],
+        agent=IDS["agent_ids"]["tangseng"],
         environment_id=IDS["environment_id"],
         title=f"{client_name} - {time.strftime('%Y-%m-%d %H:%M')}",
         resources=[
@@ -150,11 +150,11 @@ def print_console_url(session_id: str) -> None:
 
 
 AGENT_STYLES = {
-    "Elon": ("bold red", "🧑"),
-    "Jobs": ("bold cyan", "📋"),
-    "Linux": ("bold green", "💻"),
-    "Turing": ("bold yellow", "🧪"),
-    "Bezos": ("bold magenta", "📈"),
+    "唐僧": ("bold red", "🙏"),
+    "八戒": ("bold cyan", "💡"),
+    "猴哥": ("bold green", "🐒"),
+    "沙僧": ("bold yellow", "🧪"),
+    "白龙马": ("bold magenta", "🐴"),
 }
 
 
@@ -188,7 +188,7 @@ def chat_turn(session_id: str, user_text: str) -> bool:
             # Elon 在主 thread 发出的文本
             if t == "agent.message":
                 if not current_text_open:
-                    console.print("\n[bold red]🧑 Elon[/bold red]:")
+                    console.print("\n[bold red]🙏 唐僧[/bold red]:")
                     current_text_open = True
                 text = render_text_blocks(event.content)
                 if text:
@@ -208,7 +208,7 @@ def chat_turn(session_id: str, user_text: str) -> bool:
                 name = getattr(event, "to_agent_name", "?")
                 preview = render_text_blocks(getattr(event, "content", []))[:80]
                 console.print(
-                    f"\n[bold red]🧑 Elon[/bold red] → [bold]{name}[/bold]: [dim]{preview}…[/dim]"
+                    f"\n[bold red]🙏 唐僧[/bold red] → [bold]{name}[/bold]: [dim]{preview}…[/dim]"
                 )
                 current_text_open = False
 
@@ -281,11 +281,11 @@ def cmd_show_team() -> None:
     table.add_column("角色", style="bold")
     table.add_column("Agent ID", style="cyan")
     role_labels = {
-        "elon": "Elon (CEO / 编排器)",
-        "jobs": "Jobs (产品经理)",
-        "linux": "Linux (工程师)",
-        "turing": "Turing (QA)",
-        "bezos": "Bezos (客户成功)",
+        "tangseng": "🙏 唐僧（协调者 / 领队）",
+        "bajie": "💡 八戒（产品经理）",
+        "wukong": "🐒 猴哥（软件工程师）",
+        "shawujing": "🧪 沙僧（QA 工程师）",
+        "bailongma": "🐴 白龙马（客户成功）",
     }
     for role, label in role_labels.items():
         table.add_row(label, IDS["agent_ids"].get(role, "(未创建)"))
@@ -372,7 +372,7 @@ BANNER = """
 ╔══════════════════════════════════════════════════════════════╗
 ║   TeamUp — AI 交付团队 (Managed Agents)                       ║
 ║                                                              ║
-║   Elon (CEO)  ·  Jobs  ·  Linux  ·  Turing  ·  Bezos         ║
+║   🙏 唐僧  ·  💡 八戒  ·  🐒 猴哥  ·  🧪 沙僧  ·  🐴 白龙马   ║
 ╚══════════════════════════════════════════════════════════════╝
 """
 
