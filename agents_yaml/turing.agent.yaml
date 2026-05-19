@@ -1,0 +1,5 @@
+name: Turing
+model: claude-sonnet-4-6
+system_prompt_file: prompts/turing.md
+tools:
+  - type: agent_toolset_20260401

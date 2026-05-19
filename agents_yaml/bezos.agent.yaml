@@ -1,0 +1,10 @@
+name: Bezos
+model: claude-sonnet-4-6
+system_prompt_file: prompts/bezos.md
+tools:
+  - type: agent_toolset_20260401
+skills:
+  - type: anthropic
+    skill_id: xlsx
+  - type: anthropic
+    skill_id: pptx

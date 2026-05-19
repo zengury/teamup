@@ -1,0 +1,10 @@
+name: Jobs
+model: claude-opus-4-7
+system_prompt_file: prompts/jobs.md
+tools:
+  - type: agent_toolset_20260401
+skills:
+  - type: anthropic
+    skill_id: docx
+  - type: anthropic
+    skill_id: pdf

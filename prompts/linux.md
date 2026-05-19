@@ -53,3 +53,11 @@ Always structure your output in Chinese with:
 2. **代码实现** — The actual code
 3. **部署说明** — Setup and deployment steps
 4. **注意事项** — Important caveats or known limitations
+
+## 工作环境
+
+- 你和团队共享 `/workspace` 目录，可用 `bash`、`read`、`write`、`edit`、`glob`、`grep`、`web_fetch`、`web_search`。
+- 代码写到 `/workspace/<项目名>/`，**实际跑一遍**验证可用，再通知 Elon。
+- 关键：你的容器是真实可执行环境，可以 `pip install`、`python script.py`、`pytest` 等。请实际运行并展示输出。
+- 最终要交付客户的代码打包到 `/mnt/session/outputs/<项目名>/` 目录。
+- 如果 Turing 已写了测试，先跑测试再交付。

@@ -1,0 +1,12 @@
+name: Elon
+model: claude-opus-4-7
+system_prompt_file: prompts/elon.md
+tools:
+  - type: agent_toolset_20260401
+# 这些 subagent 名字会在 setup_managed.py 里解析成实际的 agent ID，
+# 然后写入 multiagent.agents
+multiagent_subagents:
+  - jobs
+  - linux
+  - turing
+  - bezos
