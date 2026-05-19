@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>TeamUp · 西天取经团队 · 控制台</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="scroll-bg"></div>
+
+  <header class="topbar">
+    <div class="title">
+      <span class="seal">印</span>
+      <span class="title-cn">TeamUp · 西天取经控制台</span>
+      <span class="title-en">Journey Control Plane</span>
+    </div>
+    <div class="client-bar">
+      <label>当前客户：</label>
+      <select id="clientSelect">
+        <option value="">— 请选择 —</option>
+      </select>
+      <input id="newClientInput" placeholder="新客户名" />
+      <button id="newClientBtn">立项</button>
+      <span class="session-pill" id="sessionPill">未开始</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- ────── 取经地图 ────── -->
+    <section class="map">
+      <div class="map-title">取 经 路 线 图</div>
+      <svg class="flow-svg" id="flowSvg" preserveAspectRatio="none"></svg>
+
+      <!-- 唐僧居中 -->
+      <div class="agent-card leader" data-agent="唐僧">
+        <div class="lotus"></div>
+        <div class="agent-icon">🙏</div>
+        <div class="agent-name">唐 僧</div>
+        <div class="agent-role">协调者 · 领队</div>
+        <div class="agent-model">opus 4.5</div>
+        <div class="agent-status idle">待命</div>
+        <div class="agent-activity"></div>
+      </div>
+
+      <!-- 四徒弟环列 -->
+      <div class="agent-card disciple" data-agent="八戒" style="--pos: nw;">
+        <div class="agent-icon">💡</div>
+        <div class="agent-name">八 戒</div>
+        <div class="agent-role">产品经理</div>
+        <div class="agent-model">sonnet 4.6</div>
+        <div class="agent-status idle">待命</div>
+        <div class="agent-activity"></div>
+      </div>
+
+      <div class="agent-card disciple" data-agent="猴哥" style="--pos: ne;">
+        <div class="agent-icon">🐒</div>
+        <div class="agent-name">猴 哥</div>
+        <div class="agent-role">软件工程师</div>
+        <div class="agent-model">opus 4.7</div>
+        <div class="agent-status idle">待命</div>
+        <div class="agent-activity"></div>
+      </div>
+
+      <div class="agent-card disciple" data-agent="沙僧" style="--pos: sw;">
+        <div class="agent-icon">🧪</div>
+        <div class="agent-name">沙 僧</div>
+        <div class="agent-role">QA 工程师</div>
+        <div class="agent-model">sonnet 4.6</div>
+        <div class="agent-status idle">待命</div>
+        <div class="agent-activity"></div>
+      </div>
+
+      <div class="agent-card disciple" data-agent="白龙马" style="--pos: se;">
+        <div class="agent-icon">🐴</div>
+        <div class="agent-name">白龙马</div>
+        <div class="agent-role">客户成功</div>
+        <div class="agent-model">sonnet 4.6</div>
+        <div class="agent-status idle">待命</div>
+        <div class="agent-activity"></div>
+      </div>
+    </section>
+
+    <!-- ────── 右侧栏 ────── -->
+    <aside class="sidebar">
+      <section class="panel chat-panel">
+        <header class="panel-title">
+          <span>对话 · 顾问 ↔ 唐僧</span>
+          <span class="panel-hint">⏎ 发送 · Shift+⏎ 换行</span>
+        </header>
+        <div class="chat-log" id="chatLog"></div>
+        <form class="chat-input" id="chatForm">
+          <textarea id="chatInput" rows="3" placeholder="向唐僧描述客户需求…&#10;或粘贴录音文字稿，唐僧会派徒弟们各司其职。"></textarea>
+          <button type="submit" id="sendBtn">送上路</button>
+        </form>
+      </section>
+
+      <section class="panel files-panel">
+        <header class="panel-title">
+          <span>📜 交付经卷</span>
+          <button class="mini" id="refreshFilesBtn">刷新</button>
+        </header>
+        <div class="file-list" id="fileList">
+          <div class="empty-hint">还未取得真经</div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <!-- 底部事件流 -->
+  <footer class="event-strip">
+    <div class="strip-title">事件流</div>
+    <div class="strip-log" id="eventStrip"></div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
