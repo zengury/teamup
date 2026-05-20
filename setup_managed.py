@@ -91,7 +91,7 @@ def build_agent_kwargs(cfg: dict, multiagent_resolved: list[str] | None = None) 
     if multiagent_resolved:
         kwargs["multiagent"] = {
             "type": "coordinator",
-            "agents": multiagent_resolved,
+            "agents": [{"type": "agent", "id": aid} for aid in multiagent_resolved],
         }
     return kwargs
 
