@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Teamup Agent OS</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="control-plane">
+      <aside class="sidebar" aria-label="Teamup navigation">
+        <div class="brand">
+          <div class="brand-mark">佛</div>
+          <div>
+            <strong>西天产线总控台</strong>
+            <span>Journey Delivery Foundry</span>
+          </div>
+        </div>
+
+        <section class="journey-card project-panel">
+          <div class="project-panel-head">
+            <div>
+              <span class="eyebrow">Projects</span>
+              <strong id="projectTitle">陈先生面包店订单自动化</strong>
+            </div>
+            <span class="status-pill live">运行中</span>
+          </div>
+          <p id="projectSummary">把 LINE、WhatsApp、电话订单自动进入统一系统，减少漏单、错单和客户投诉。</p>
+          <label class="project-search">
+            <span>检索项目</span>
+            <input id="projectSearchInput" type="text" placeholder="搜索项目 / 客户 / 批次" />
+          </label>
+          <div class="project-list" id="projectList"></div>
+        </section>
+
+        <div class="operator-card">
+          <span class="eyebrow">Buddha Focus</span>
+          <strong>总控提醒</strong>
+          <p id="founderFocus">唐僧建议先锁定 LINE / WhatsApp / 电话三路自动入台，不在首单里碰 POS 集成。</p>
+          <button class="icon-button wide" data-action="open-command">⌘K</button>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <span class="eyebrow">Live Factory Control</span>
+            <h1>取经团队交付生产线</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="ghost-button" data-action="advance-tick">推进批次</button>
+            <button class="ghost-button" data-action="inject-feedback">客户回音</button>
+            <button class="ghost-button" data-action="cycle-feedback-scenario">白龙马采集</button>
+            <button class="primary-button" data-action="run-tangseng">唐僧发令</button>
+          </div>
+        </header>
+
+        <section class="hero-grid">
+          <section class="panel team-stage-panel production-panel">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">Team Theater</span>
+                <h2>取经团队协作图</h2>
+              </div>
+              <span class="status-pill live" id="journeyMode">快速交付模式</span>
+            </div>
+            <div class="hero-summary-strip" id="summaryGrid"></div>
+            <div class="mission-core-card">
+              <div>
+                <span class="artifact-type" id="journeyDemandType">Founder Demand</span>
+                <strong id="journeyDemand">把面包店多渠道订单自动录入，减少漏单、错单和客户投诉</strong>
+                <p id="journeyNarrative">这是一单明确的小场景交付：少漏单、少错单、少跑腿，让非技术员工也能用。</p>
+              </div>
+              <div class="mission-position">
+                <span class="artifact-type">任务位置</span>
+                <strong id="journeyPosition">第 2 / 7 阶段</strong>
+                <p id="journeyPositionNote">当前卡在方案定界与样本准备之间，还没有进入真实工程生产。</p>
+              </div>
+            </div>
+            <div class="team-stage" id="teamStage"></div>
+            <div class="state-track compact-track" id="stateTrack"></div>
+          </section>
+
+          <aside class="panel command-panel">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">Work Surface</span>
+                <h2>你与唐僧</h2>
+              </div>
+              <span class="status-pill live">可干预</span>
+            </div>
+            <div class="thread" id="commandThread"></div>
+            <div class="composer">
+              <textarea id="directiveInput" placeholder="继续补充需求、询问进度、要求修改方案边界..."></textarea>
+              <div class="composer-actions">
+                <button class="ghost-button compact" data-action="ask-progress">问进度</button>
+                <button class="ghost-button compact" data-action="tighten-scope">收紧范围</button>
+                <button class="primary-button compact" data-action="send-directive">发给唐僧</button>
+              </div>
+            </div>
+            <div class="decision-strip" id="decisionList"></div>
+          </aside>
+        </section>
+
+        <section class="signal-grid">
+          <section class="panel feedback-priority-panel interaction-panel">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">Customer Feedback</span>
+                <h2>客户反馈与下一步</h2>
+              </div>
+              <button class="ghost-button compact" data-action="push-feedback-brief">推送简报</button>
+            </div>
+            <div class="feedback-summary-shell">
+              <div class="feedback-summary-card">
+                <span class="artifact-type">Customer Sentiment</span>
+                <strong id="feedbackSentiment">neutral-positive</strong>
+                <p id="feedbackSummaryText">客户愿意推进，但实现前还缺真实订单样本、账号权限和定制蛋糕报价规则。</p>
+              </div>
+              <div class="feedback-summary-card emphasis">
+                <span class="artifact-type">唐僧下一步</span>
+                <strong id="feedbackRecommendation">先让白龙马追齐 LINE OA 权限、样本 Excel 和定制蛋糕规则，再让猴哥开工。</strong>
+                <p id="feedbackEvidence">证据来源：访谈记录、预算表述、渠道现状</p>
+              </div>
+              <div class="feedback-summary-card">
+                <span class="artifact-type">Follow-up</span>
+                <strong id="followupStatus">待审批发送</strong>
+                <p id="followupDraft">下一步只需三样资料：现有订单 Excel、几条真实订单对话样本，以及定制蛋糕通常如何确认价格和取货时间。</p>
+              </div>
+            </div>
+            <div class="feedback-visuals">
+              <section class="feedback-chart-card">
+                <div class="micro-header">
+                  <span class="eyebrow">Signal Mix</span>
+                  <strong>反馈信号图</strong>
+                </div>
+                <div class="signal-mix-bar" id="signalMixBar"></div>
+                <div class="signal-legend" id="signalLegend"></div>
+              </section>
+              <section class="feedback-chart-card">
+                <div class="micro-header">
+                  <span class="eyebrow">Feedback Cadence</span>
+                  <strong>回流节拍</strong>
+                </div>
+                <div class="feedback-cadence" id="feedbackCadence"></div>
+              </section>
+            </div>
+            <div class="brief-merge-card">
+              <div class="micro-header">
+                <span class="eyebrow">Brief</span>
+                <strong>需求简述</strong>
+              </div>
+              <p id="briefOverview">目标是在不增加人手的前提下，把 LINE、WhatsApp、电话订单自动进入统一系统，减少漏单、错单和客户投诉。</p>
+              <div class="brief-bullet-list" id="briefBulletList"></div>
+            </div>
+            <div class="feedback-columns">
+              <section>
+                <div class="micro-header">
+                  <span class="eyebrow">Sources</span>
+                  <strong>反馈来源</strong>
+                </div>
+                <div class="source-list" id="feedbackSources"></div>
+              </section>
+              <section>
+                <div class="micro-header">
+                  <span class="eyebrow">Signals</span>
+                  <strong>信号判断</strong>
+                </div>
+                <div class="signal-list" id="feedbackSignals"></div>
+              </section>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div class="command-menu hidden" id="commandMenu" role="dialog" aria-modal="true">
+      <div class="command-dialog">
+        <input id="commandInput" placeholder="搜索动作：运行唐僧、确认猴哥输入、生成客户更新..." />
+        <div class="command-results" id="commandResults"></div>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

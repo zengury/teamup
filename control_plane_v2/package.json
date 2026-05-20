@@ -1,0 +1,22 @@
+{
+  "name": "teamup-agent-os",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "harness:example": "tsc && node dist/harness/example.js",
+    "role-harness:example": "tsc && node dist/harness/roleHarnessExample.js",
+    "trust:example": "tsc && node dist/harness/trustExample.js",
+    "downstream-review:example": "tsc && node dist/harness/downstreamReviewExample.js",
+    "customer-feedback:example": "tsc && node dist/harness/customerFeedbackExample.js",
+    "orchestrator:example": "tsc && node dist/orchestrator/example.js",
+    "loop:example": "tsc && node dist/orchestrator/collaborationLoopExample.js",
+    "supervisor:example": "tsc && node dist/orchestrator/supervisorExample.js",
+    "runtime:example": "tsc && node dist/runtime/example.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
