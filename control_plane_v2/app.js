@@ -666,8 +666,19 @@ const state = {
 };
 
 const runtime = createBakeryDemoRuntime();
+const backend = {
+  available: location.protocol === "http:" || location.protocol === "https:",
+  connected: false,
+  activeTurn: false,
+  socket: null,
+  reconnectTimer: null
+};
 
 const $ = (selector) => document.querySelector(selector);
+
+function isBackendMode() {
+  return backend.available && backend.connected;
+}
 
 function syncState(snapshot) {
   state.projects = snapshot.projects;
@@ -731,6 +742,273 @@ function feedbackMix(signals) {
   return mix.map((item) => ({ ...item, share: Math.round((item.count / total) * 100) }));
 }
 
+const backendAgentNames = {
+  "唐僧": "tangseng",
+  "八戒": "bajie",
+  "猴哥": "houge",
+  "沙僧": "shaseng",
+  "白龙马": "bailongma"
+};
+
+const backendRoleLabels = {
+  "唐僧": "leader",
+  "八戒": "product",
+  "猴哥": "builder",
+  "沙僧": "qa",
+  "白龙马": "success"
+};
+
+const backendStatusMap = {
+  idle: "queued",
+  thinking: "thinking",
+  working: "active",
+  delegating: "orchestrating",
+  speaking: "active",
+  delivered: "done"
+};
+
+function projectFromClient(client, index, currentClient) {
+  const active = client === currentClient || (!currentClient && index === 0);
+  return {
+    id: `P${String(index + 1).padStart(2, "0")}`,
+    name: `${client} agent 交付`,
+    client,
+    summary: active ? "正在由真实 TeamUp session 驱动。" : "历史客户，可切换继续推进。",
+    status: active ? "active" : "queued"
+  };
+}
+
+function applyBackendState(payload = {}) {
+  const embeddedState = payload.state ?? {};
+  const clients = payload.clients ?? embeddedState.clients ?? [];
+  const currentClient = payload.current_client ?? embeddedState.current_client ?? clients[0];
+  const currentSession = payload.current_session ?? embeddedState.current_session ?? "";
+
+  if (clients.length) {
+    const projects = clients.map((client, index) => projectFromClient(client, index, currentClient));
+    const activeIndex = projects.findIndex((project) => project.client === currentClient);
+    if (activeIndex > 0) {
+      const [activeProject] = projects.splice(activeIndex, 1);
+      projects.unshift(activeProject);
+    }
+    state.projects = projects;
+    state.projectQuery = "";
+  } else if (currentClient) {
+    state.projects = [projectFromClient(currentClient, 0, currentClient), ...state.projects.slice(1)];
+  }
+
+  if (currentClient) {
+    state.summary[0] = { label: "当前客户", value: currentClient, tone: "green" };
+  }
+  if (currentSession) {
+    state.summary[1] = { label: "真实 Session", value: currentSession.slice(0, 12), tone: "blue" };
+  }
+
+  const statusPayload = payload.agent_status ?? embeddedState.agent_status ?? {};
+  Object.entries(statusPayload).forEach(([name, agentState]) => {
+    updateAgentFromBackend(name, agentState?.status ?? "idle", agentState?.activity ?? "");
+  });
+}
+
+function updateAgentFromBackend(name, backendStatus = "idle", activity = "") {
+  const id = backendAgentNames[name] ?? name;
+  const agent = state.agents.find((item) => item.id === id || item.name === name);
+  if (!agent) return;
+
+  const mappedStatus = backendStatusMap[backendStatus] ?? backendStatus;
+  agent.status = mappedStatus;
+  agent.current = activity || ({
+    idle: "等待下一次调度。",
+    thinking: "正在理解上下文并形成下一步判断。",
+    working: "正在执行当前任务。",
+    delegating: "正在把任务拆给合适角色。",
+    speaking: "正在向唐僧或如来汇报。",
+    delivered: "本轮输出已经交付。"
+  }[backendStatus] ?? agent.current);
+
+  if (backendStatus === "delivered") {
+    agent.progress = Math.max(agent.progress, 92);
+    agent.blocker = "暂无阻塞，等待唐僧验收或下发下一步。";
+  } else if (backendStatus === "idle") {
+    agent.progress = Math.max(18, Math.min(agent.progress, 42));
+    agent.blocker = name === "唐僧" ? "等待你的下一条需求或当前 session 事件。" : "等待唐僧调度。";
+  } else {
+    agent.progress = Math.max(agent.progress, backendStatus === "thinking" ? 48 : 62);
+    agent.blocker = "暂无阻塞，真实后端事件流正在推进。";
+  }
+}
+
+function appendBackendThread(who, text) {
+  const rawText = String(text ?? "");
+  if (!rawText.trim()) return;
+  const cleanText = rawText;
+  const role = backendRoleLabels[who] ?? "agent";
+  const tone = who === "你" ? "founder" : "agent";
+  const last = state.thread[state.thread.length - 1];
+  if (last && last.who === who && last.tone === tone) {
+    if (last.text.trim() === cleanText.trim()) return;
+    if (tone === "agent") {
+      last.text = `${last.text}${cleanText}`;
+      return;
+    }
+  }
+  state.thread.push({ who, role, tone, text: cleanText });
+  if (state.thread.length > 18) state.thread = state.thread.slice(-18);
+}
+
+function applyBackendFiles(files = []) {
+  if (!files.length) return;
+  state.deliveries = files.map((file, index) => ({
+    title: file.filename ?? file.name ?? `真实交付物 ${index + 1}`,
+    owner: "真实 session",
+    status: "ready",
+    result: file.url ?? `/api/file/${file.id}`,
+    quality: "来自后端 session outputs"
+  }));
+  state.outcome.health = "真实交付物已更新";
+  state.outcome.risk = "等待唐僧汇总客户可读版本";
+}
+
+async function selectBackendClient(client) {
+  if (!backend.available || !client) return false;
+  const response = await fetch("/api/client/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: client })
+  });
+  if (!response.ok) throw new Error(await response.text());
+  const data = await response.json();
+  backend.connected = true;
+  applyBackendState({
+    clients: state.projects.map((project) => project.client),
+    current_client: data.client,
+    current_session: data.session_id
+  });
+  renderAll();
+  return true;
+}
+
+async function sendBackendMessage(text) {
+  const content = String(text ?? "").trim();
+  if (!content || !backend.available) return false;
+
+  if (!backend.connected) {
+    await selectBackendClient(state.projects[0]?.client);
+  }
+
+  appendBackendThread("你", content);
+  backend.activeTurn = true;
+  updateAgentFromBackend("唐僧", "thinking", "接收如来需求，准备拆解本轮任务。");
+  renderAll();
+
+  const response = await fetch("/api/message", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: content })
+  });
+
+  if (!response.ok) {
+    backend.activeTurn = false;
+    appendBackendThread("唐僧", `发送失败：${await response.text()}`);
+    renderAll();
+    return false;
+  }
+  return true;
+}
+
+async function connectBackendBridge() {
+  if (!backend.available) return;
+  try {
+    const response = await fetch("/api/state");
+    if (!response.ok) return;
+    const data = await response.json();
+    backend.connected = true;
+    applyBackendState(data);
+    renderAll();
+    openBackendSocket();
+  } catch {
+    backend.connected = false;
+  }
+}
+
+function openBackendSocket() {
+  if (!backend.available || backend.socket?.readyState === WebSocket.OPEN) return;
+  const protocol = location.protocol === "https:" ? "wss" : "ws";
+  const socket = new WebSocket(`${protocol}://${location.host}/ws`);
+  backend.socket = socket;
+  socket.addEventListener("open", () => {
+    backend.connected = true;
+  });
+  socket.addEventListener("close", () => {
+    backend.connected = false;
+    backend.socket = null;
+    clearTimeout(backend.reconnectTimer);
+    backend.reconnectTimer = setTimeout(connectBackendBridge, 3000);
+  });
+  socket.addEventListener("message", (event) => {
+    try {
+      handleBackendEvent(JSON.parse(event.data));
+    } catch (error) {
+      appendBackendThread("唐僧", `事件解析失败：${error.message}`);
+      renderAll();
+    }
+  });
+}
+
+function handleBackendEvent(message) {
+  if (!message?.type) return;
+  if (message.type === "hello") {
+    backend.connected = true;
+    applyBackendState(message);
+  }
+  if (message.type === "client_selected") {
+    applyBackendState({
+      clients: state.projects.map((project) => project.client),
+      current_client: message.client,
+      current_session: message.session_id
+    });
+  }
+  if (message.type === "turn_started") {
+    backend.activeTurn = true;
+    state.decisions = [];
+    if (message.text || message.user_text) appendBackendThread("你", message.text ?? message.user_text);
+    updateAgentFromBackend("唐僧", "thinking", "理解需求，准备拆给徒弟们。");
+  }
+  if (message.type === "turn_ended" || message.type === "session_idle") {
+    backend.activeTurn = false;
+    updateAgentFromBackend("唐僧", "idle", "本轮已收束，等待你的下一条需求。");
+  }
+  if (message.type === "session_terminated") {
+    backend.activeTurn = false;
+    updateAgentFromBackend("唐僧", "delivered", "session 已结束，等待归档或新任务。");
+  }
+  if (message.type === "agent_text") {
+    appendBackendThread(message.agent ?? "唐僧", message.text ?? "");
+  }
+  if (message.type === "agent_status") {
+    updateAgentFromBackend(message.agent ?? "唐僧", message.status, message.activity);
+  }
+  if (message.type === "delegation") {
+    appendBackendThread("唐僧", `派任务给 ${message.to_agent ?? "徒弟"}：${message.task ?? "执行下一步"}`);
+    updateAgentFromBackend(message.to_agent ?? "猴哥", "working", message.task ?? "执行唐僧分派的任务。");
+  }
+  if (message.type === "delegation_reply") {
+    appendBackendThread(message.from_agent ?? "徒弟", `交付给唐僧：${message.text ?? "本环节已完成。"}`);
+    updateAgentFromBackend(message.from_agent ?? "徒弟", "delivered", "已把本环节结果交回唐僧。");
+  }
+  if (message.type === "tool_use") {
+    updateAgentFromBackend(message.agent ?? "猴哥", "working", `使用 ${message.tool ?? "工具"}。`);
+  }
+  if (message.type === "files_updated") {
+    applyBackendFiles(message.files ?? []);
+  }
+  if (message.type === "error") {
+    backend.activeTurn = false;
+    appendBackendThread("唐僧", `后端报错：${message.message ?? "未知错误"}`);
+  }
+  renderAll();
+}
+
 function renderProjectRail() {
   const title = $("#projectTitle");
   const summary = $("#projectSummary");
@@ -751,7 +1029,7 @@ function renderProjectRail() {
   }
 
   list.innerHTML = projects
-    .map((project) => `<article class="project-chip ${project.status} ${project.id === state.projects[0].id ? "active" : ""}">
+    .map((project) => `<article class="project-chip ${project.status} ${project.id === state.projects[0].id ? "active" : ""}" data-client="${project.client}">
       <div>
         <strong>${project.name}</strong>
         <p>${project.client}</p>
@@ -1206,42 +1484,76 @@ function approveLatest() {
 }
 
 function bindActions() {
-  document.body.addEventListener("click", (event) => {
-    const action = event.target.dataset.action;
+  document.body.addEventListener("click", async (event) => {
+    const actionTarget = event.target.closest("[data-action]");
+    const action = actionTarget?.dataset.action;
     if (!action) return;
     if (action === "open-command") openCommandMenu();
     if (action === "advance-tick" || action === "run-tangseng") {
-      syncState(runtime.advance());
+      if (isBackendMode()) {
+        await sendBackendMessage("请唐僧推进当前批次，并把下一步交给合适的徒弟。");
+      } else {
+        syncState(runtime.advance());
+      }
       renderAll();
     }
     if (action === "inject-feedback") {
-      syncState(runtime.injectCustomerMaterials());
+      if (isBackendMode()) {
+        await sendBackendMessage("客户已经补充关键材料，请白龙马整理并交给唐僧。");
+      } else {
+        syncState(runtime.injectCustomerMaterials());
+      }
       renderAll();
     }
     if (action === "cycle-feedback-scenario" || action === "push-feedback-brief") {
-      syncState(runtime.pushFeedbackBrief());
+      if (isBackendMode()) {
+        await sendBackendMessage("请白龙马汇总当前客户反馈并回传给唐僧。");
+      } else {
+        syncState(runtime.pushFeedbackBrief());
+      }
       renderAll();
     }
     if (action === "approve-latest") approveLatest();
     if (action === "ask-progress") {
-      syncState(runtime.founderDirective("给我一个不绕的当前进度。"));
+      if (isBackendMode()) {
+        await sendBackendMessage("给我一个不绕的当前进度。");
+      } else {
+        syncState(runtime.founderDirective("给我一个不绕的当前进度。"));
+      }
       renderAll();
     }
     if (action === "tighten-scope") {
-      syncState(runtime.founderDirective("先收紧范围，首单不要碰 POS。"));
+      if (isBackendMode()) {
+        await sendBackendMessage("先收紧范围，首单不要碰 POS。");
+      } else {
+        syncState(runtime.founderDirective("先收紧范围，首单不要碰 POS。"));
+      }
       renderAll();
     }
     if (action === "send-directive") {
-      syncState(runtime.founderDirective($("#directiveInput").value));
+      const input = $("#directiveInput");
+      const directive = input.value;
+      if (isBackendMode()) {
+        await sendBackendMessage(directive);
+      } else {
+        syncState(runtime.founderDirective(directive));
+      }
       $("#directiveInput").value = "";
       renderAll();
     }
     if (action === "approve-decision") {
-      syncState(runtime.approveDecision(event.target.dataset.id));
+      const decisionId = actionTarget.dataset.id;
+      const item = state.decisions.find((decision) => decision.id === decisionId);
+      if (isBackendMode() && item) {
+        await sendBackendMessage(`批准：${item.title}。请唐僧按这个决策继续推进。`);
+        state.decisions = state.decisions.filter((decision) => decision.id !== decisionId);
+      } else {
+        syncState(runtime.approveDecision(decisionId));
+      }
       renderAll();
     }
     if (action === "ask-decision") {
-      const item = state.decisions.find((decision) => decision.id === event.target.dataset.id);
+      const item = state.decisions.find((decision) => decision.id === actionTarget.dataset.id);
       if (item) {
         appendThread("你", "如来佛祖", "founder", `再解释一下：${item.title}`);
         appendThread("唐僧", "leader", "agent", `${item.detail} 这件事的真实影响是：${item.impact}`);
@@ -1249,7 +1561,7 @@ function bindActions() {
       }
     }
     if (action === "inspect-flow") {
-      const flow = state.flows.find((item) => item.id === event.target.dataset.flowId);
+      const flow = state.flows.find((item) => item.id === actionTarget.dataset.flowId);
       if (flow) {
         state.events.unshift(["刚刚", "你查看了流转", `${flow.from} 到 ${flow.to}：${flow.label}`]);
         renderEvents();
@@ -1272,9 +1584,29 @@ function bindActions() {
   const projectSearch = $("#projectSearchInput");
   if (projectSearch) {
     projectSearch.addEventListener("input", (event) => {
-      runtime.setProjectQuery(event.target.value);
-      syncState(runtime.getSnapshot());
+      if (isBackendMode()) {
+        state.projectQuery = event.target.value;
+      } else {
+        runtime.setProjectQuery(event.target.value);
+        syncState(runtime.getSnapshot());
+      }
       renderProjectRail();
+    });
+  }
+
+  const projectList = $("#projectList");
+  if (projectList) {
+    projectList.addEventListener("click", async (event) => {
+      const chip = event.target.closest(".project-chip[data-client]");
+      if (!chip) return;
+      if (backend.available) {
+        try {
+          await selectBackendClient(chip.dataset.client);
+        } catch (error) {
+          appendBackendThread("唐僧", `切换客户失败：${error.message}`);
+          renderAll();
+        }
+      }
     });
   }
 }
@@ -1297,6 +1629,7 @@ function init() {
   renderNav();
   renderAll();
   bindActions();
+  connectBackendBridge();
 }
 
 init();

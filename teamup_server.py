@@ -33,7 +33,7 @@ import anthropic
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
@@ -45,6 +45,7 @@ client = anthropic.Anthropic()
 IDS_FILE = Path(".teamup_ids.json")
 CLIENTS_FILE = Path(".teamup_clients.json")
 STATIC_DIR = Path("static")
+CONTROL_PLANE_V2_DIR = Path("control_plane_v2")
 DOWNLOADS_DIR = Path("downloads")
 
 if not IDS_FILE.exists():
@@ -337,6 +338,12 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="TeamUp Control Plane", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+if CONTROL_PLANE_V2_DIR.exists():
+    app.mount(
+        "/v2",
+        StaticFiles(directory=str(CONTROL_PLANE_V2_DIR), html=True),
+        name="control_plane_v2",
+    )
 
 
 async def _broadcast_worker() -> None:
@@ -356,6 +363,11 @@ async def _broadcast_worker() -> None:
 @app.get("/")
 async def index() -> FileResponse:
     return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@app.get("/control-plane-v2")
+async def control_plane_v2() -> RedirectResponse:
+    return RedirectResponse(url="/v2/")
 
 
 @app.get("/api/state")
