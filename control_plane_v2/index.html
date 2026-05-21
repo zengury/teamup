@@ -30,6 +30,10 @@
             <span>检索项目</span>
             <input id="projectSearchInput" type="text" placeholder="搜索项目 / 客户 / 批次" />
           </label>
+          <div class="project-create">
+            <input id="clientNameInput" type="text" placeholder="新客户名，例如 Mr. Chen Bakery" />
+            <button class="primary-button compact" data-action="create-client">开新项目</button>
+          </div>
           <div class="project-list" id="projectList"></div>
         </section>
 
@@ -92,7 +96,8 @@
             <div class="thread" id="commandThread"></div>
             <div class="composer">
               <textarea id="directiveInput" placeholder="继续补充需求、询问进度、要求修改方案边界..."></textarea>
-              <div class="composer-actions">
+            <div class="composer-actions">
+                <button class="ghost-button compact" data-action="send-transcript">访谈转需求</button>
                 <button class="ghost-button compact" data-action="ask-progress">问进度</button>
                 <button class="ghost-button compact" data-action="tighten-scope">收紧范围</button>
                 <button class="primary-button compact" data-action="send-directive">发给唐僧</button>
@@ -170,6 +175,52 @@
               </section>
             </div>
           </section>
+        </section>
+
+        <section class="factory-grid">
+          <section class="panel factory-line-panel">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">Production Line</span>
+                <h2>真实产线流转</h2>
+              </div>
+              <span class="status-pill live" id="lineStatus">产线运行中</span>
+            </div>
+            <div class="production-line" id="productionLineView"></div>
+          </section>
+
+          <aside class="factory-side">
+            <section class="panel delivery-panel">
+              <div class="panel-header">
+                <div>
+                  <span class="eyebrow">Deliverables</span>
+                  <h2>交付物</h2>
+                </div>
+                <button class="ghost-button compact" data-action="refresh-files">刷新</button>
+              </div>
+              <div class="delivery-list" id="deliveryList"></div>
+            </section>
+
+            <section class="panel analysis-panel">
+              <div class="panel-header">
+                <div>
+                  <span class="eyebrow">Telemetry</span>
+                  <h2>瓶颈与品质</h2>
+                </div>
+              </div>
+              <div class="ops-grid" id="opsGrid"></div>
+            </section>
+
+            <section class="panel signal-panel">
+              <div class="panel-header">
+                <div>
+                  <span class="eyebrow">Event Stream</span>
+                  <h2>协作事件</h2>
+                </div>
+              </div>
+              <div class="event-stream" id="eventStream"></div>
+            </section>
+          </aside>
         </section>
       </main>
     </div>

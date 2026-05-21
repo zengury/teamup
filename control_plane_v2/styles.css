@@ -179,6 +179,22 @@ button {
   color: var(--ink);
 }
 
+.project-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.project-create input {
+  min-height: 36px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 11px;
+  background: rgba(255, 247, 232, 0.04);
+  color: var(--ink);
+}
+
 .project-list {
   display: grid;
   gap: 8px;
@@ -1316,6 +1332,92 @@ h2 {
 
 .batch-chip.blocked {
   border-left: 4px solid var(--danger);
+}
+
+.artifact-preview-card {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background:
+    linear-gradient(180deg, rgba(232, 241, 255, 0.035), transparent 42%),
+    var(--panel-2);
+}
+
+.preview-screen {
+  min-height: 74px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 247, 232, 0.12);
+  background: linear-gradient(135deg, rgba(107, 137, 200, 0.32), rgba(43, 33, 25, 0.84));
+  padding: 8px;
+}
+
+.preview-screen.tone-gold {
+  background: linear-gradient(135deg, rgba(213, 165, 74, 0.34), rgba(43, 33, 25, 0.84));
+}
+
+.preview-screen.tone-green {
+  background: linear-gradient(135deg, rgba(79, 184, 155, 0.32), rgba(43, 33, 25, 0.84));
+}
+
+.preview-screen.tone-red {
+  background: linear-gradient(135deg, rgba(224, 113, 82, 0.28), rgba(43, 33, 25, 0.84));
+}
+
+.preview-topbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.preview-topbar span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 247, 232, 0.5);
+}
+
+.preview-layout {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+}
+
+.preview-block,
+.preview-line {
+  display: block;
+  min-height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 247, 232, 0.42);
+}
+
+.preview-block.wide,
+.preview-line {
+  grid-column: 1 / -1;
+}
+
+.preview-line.short {
+  grid-column: 1 / 2;
+}
+
+.artifact-preview-copy {
+  min-width: 0;
+}
+
+.artifact-preview-copy strong {
+  display: block;
+  color: var(--ink-strong);
+}
+
+.artifact-preview-copy p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .batch-chip.done {

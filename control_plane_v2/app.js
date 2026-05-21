@@ -674,6 +674,36 @@ const backend = {
   reconnectTimer: null
 };
 
+const defaultTranscriptPrompt = `[00:00] Customer (Mr. Chen, Owner):
+We run a medium bakery with 12 staff. We have three stores and a central kitchen.
+Our biggest problem right now is that we get lots of orders through LINE, WhatsApp,
+and phone calls, and our staff has to manually enter everything into a spreadsheet.
+It's causing mistakes - wrong orders, missed deliveries. I heard AI can help with this.
+
+[00:45] You:
+Tell me more about the volume - how many orders per day?
+
+[00:50] Mr. Chen:
+About 80-120 orders per day across all channels. Weekends can hit 200. We sell
+bread, cakes, and custom celebration cakes. The custom cakes are the biggest
+headache because customers send photos and special instructions.
+
+[01:20] Mr. Chen:
+Customer messages come in. My daughter or one of the counter staff checks the
+phone every 15 minutes, copies the order details into our Excel sheet, then
+sends a confirmation manually. Sometimes a LINE message gets missed for an hour,
+customer gets angry, we lose the order.
+
+[02:05] Mr. Chen:
+I want the orders to just appear in our system automatically. No manual entry.
+And I want the kitchen to know what to bake without me running back and forth.
+Also, for custom cakes, I want the customer to get an automatic confirmation
+with price and pickup time.
+
+[02:50] Mr. Chen:
+Maybe 30,000-50,000 NTD per month. Please keep it simple. My staff are not
+technical people.`;
+
 const $ = (selector) => document.querySelector(selector);
 
 function isBackendMode() {
@@ -862,16 +892,78 @@ function applyBackendFiles(files = []) {
     title: file.filename ?? file.name ?? `真实交付物 ${index + 1}`,
     owner: "真实 session",
     status: "ready",
-    result: file.url ?? `/api/file/${file.id}`,
+    result: file.url ?? `/api/file/${file.id}?filename=${encodeURIComponent(file.filename ?? file.name ?? file.id)}`,
     quality: "来自后端 session outputs"
   }));
   state.outcome.health = "真实交付物已更新";
   state.outcome.risk = "等待唐僧汇总客户可读版本";
 }
 
-async function selectBackendClient(client) {
+function nowLabel() {
+  return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function recordBackendEvent(route, text) {
+  state.events.unshift([nowLabel(), route, String(text ?? "").slice(0, 160)]);
+  state.events = state.events.slice(0, 30);
+}
+
+const stationByAgent = {
+  "唐僧": "需求进线",
+  "八戒": "产品定型",
+  "猴哥": "工程生产",
+  "沙僧": "质量门禁",
+  "白龙马": "交付回流"
+};
+
+const journeyKeyByStation = {
+  "需求进线": "conversation_received",
+  "方案定界": "tangseng_planning",
+  "产品定型": "bajie_ideating",
+  "工程生产": "houge_building",
+  "质量门禁": "shaseng_testing",
+  "交付回流": "customer_delivered",
+  "任务结束": "closed"
+};
+
+function moveJourneyTo(station, signal = "进行中", description = "") {
+  const key = journeyKeyByStation[station] ?? station;
+  const currentIndex = state.journey.states.findIndex((item) => item.key === key || item.title === station);
+  if (currentIndex < 0) return;
+  state.journey.states = state.journey.states.map((item, index) => ({
+    ...item,
+    status: index < currentIndex ? "done" : index === currentIndex ? "current" : index === currentIndex + 1 ? "next" : "future",
+    signal: index === currentIndex ? signal : item.signal
+  }));
+  const current = state.journey.states[currentIndex];
+  if (description) current.description = description;
+  state.journey.currentState = current.key;
+  state.journey.position = `第 ${currentIndex + 1} / ${state.journey.states.length} 阶段`;
+  state.journey.positionNote = description || current.description;
+}
+
+function updateProductionStation(station, status, activity, note = "") {
+  const item = state.productionLine.find((line) => line.station === station);
+  if (!item) return;
+  item.status = status;
+  item.activity = activity;
+  item.note = note || item.note;
+  item.wip = status === "active" ? Math.max(1, item.wip) : status === "done" ? 0 : item.wip;
+  if (item.batches?.[0]) item.batches[0].status = status === "done" ? "done" : status === "warning" ? "blocked" : "active";
+  state.lineStatus = backend.activeTurn ? "真实产线运行中" : "等待下一轮指令";
+}
+
+function applyBackendActivity(agentName, status, activity = "") {
+  const station = stationByAgent[agentName];
+  if (!station) return;
+  const stationStatus = status === "idle" ? "queued" : status === "delivered" ? "done" : status === "working" || status === "speaking" || status === "delegating" || status === "thinking" ? "active" : status;
+  updateProductionStation(station, stationStatus, activity || statusLabel(stationStatus), `${agentName}：${activity || statusLabel(stationStatus)}`);
+  moveJourneyTo(station, statusLabel(stationStatus), activity);
+}
+
+async function selectBackendClient(client, forceNew = false) {
   if (!backend.available || !client) return false;
-  const response = await fetch("/api/client/select", {
+  const response = await fetch(forceNew ? "/api/client/new" : "/api/client/select", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: client })
@@ -884,6 +976,56 @@ async function selectBackendClient(client) {
     current_client: data.client,
     current_session: data.session_id
   });
+  renderAll();
+  return true;
+}
+
+async function refreshBackendFiles() {
+  if (!backend.available) return false;
+  const response = await fetch("/api/files");
+  if (!response.ok) throw new Error(await response.text());
+  applyBackendFiles(await response.json());
+  renderAll();
+  return true;
+}
+
+async function createClientProject(name) {
+  const clientName = String(name ?? "").trim();
+  if (!clientName) return false;
+
+  if (backend.available) {
+    await selectBackendClient(clientName, true);
+    recordBackendEvent("如来 → 系统", `新建真实客户 session：${clientName}`);
+  } else {
+    state.projects.unshift({
+      id: `P${String(state.projects.length + 1).padStart(2, "0")}`,
+      name: `${clientName} agent 交付`,
+      client: clientName,
+      summary: "新项目已创建，可先把访谈内容发给唐僧。",
+      status: "active"
+    });
+    state.projects.slice(1).forEach((project) => {
+      project.status = "queued";
+    });
+    state.summary[0] = { label: "当前客户", value: clientName, note: "本地预览项目", icon: "✦", tone: "green", meter: 32 };
+    recordBackendEvent("如来 → 系统", `本地创建项目：${clientName}`);
+  }
+  renderAll();
+  return true;
+}
+
+async function sendTranscriptToTangseng() {
+  const input = $("#directiveInput");
+  const pasted = input?.value.trim();
+  const transcript = pasted || defaultTranscriptPrompt;
+  const prompt = `以下是客户访谈转写。请唐僧先做 brief、MVP 边界、风险、需要徒弟执行的任务，不要直接并行触发所有角色；先给我一个可批准的任务分解。\n\n${transcript}`;
+  if (isBackendMode()) {
+    await sendBackendMessage(prompt);
+  } else {
+    syncState(runtime.founderDirective(prompt));
+    recordBackendEvent("访谈 → 唐僧", "本地 demo 已把访谈转成需求。");
+  }
+  if (input) input.value = "";
   renderAll();
   return true;
 }
@@ -972,35 +1114,56 @@ function handleBackendEvent(message) {
     backend.activeTurn = true;
     state.decisions = [];
     if (message.text || message.user_text) appendBackendThread("你", message.text ?? message.user_text);
+    recordBackendEvent("你 → 唐僧", "新一轮真实任务已进入 session。");
+    updateProductionStation("需求进线", "done", "已进入", "你的需求已经进入真实后端 session，唐僧开始拆解。");
     updateAgentFromBackend("唐僧", "thinking", "理解需求，准备拆给徒弟们。");
+    applyBackendActivity("唐僧", "thinking", "理解需求，准备拆给徒弟们。");
   }
   if (message.type === "turn_ended" || message.type === "session_idle") {
     backend.activeTurn = false;
+    state.lineStatus = "等待下一轮指令";
+    recordBackendEvent("系统 → 如来", "本轮真实 session 已进入 idle。");
     updateAgentFromBackend("唐僧", "idle", "本轮已收束，等待你的下一条需求。");
   }
   if (message.type === "session_terminated") {
     backend.activeTurn = false;
+    state.lineStatus = "任务已结束";
+    moveJourneyTo("任务结束", "已结束", "真实 session 已终止，可归档或另开新任务。");
     updateAgentFromBackend("唐僧", "delivered", "session 已结束，等待归档或新任务。");
+  }
+  if (message.type === "user_message") {
+    appendBackendThread("你", message.text ?? "");
+    recordBackendEvent("你 → 唐僧", message.text ?? "已发送需求。");
   }
   if (message.type === "agent_text") {
     appendBackendThread(message.agent ?? "唐僧", message.text ?? "");
+    recordBackendEvent(`${message.agent ?? "唐僧"} → 你`, message.text ?? "正在汇报。");
   }
   if (message.type === "agent_status") {
     updateAgentFromBackend(message.agent ?? "唐僧", message.status, message.activity);
+    applyBackendActivity(message.agent ?? "唐僧", message.status, message.activity);
   }
   if (message.type === "delegation") {
-    appendBackendThread("唐僧", `派任务给 ${message.to_agent ?? "徒弟"}：${message.task ?? "执行下一步"}`);
-    updateAgentFromBackend(message.to_agent ?? "猴哥", "working", message.task ?? "执行唐僧分派的任务。");
+    const taskText = message.task ?? message.text ?? "执行下一步";
+    appendBackendThread("唐僧", `派任务给 ${message.to_agent ?? "徒弟"}：${taskText}`);
+    recordBackendEvent("唐僧 → 徒弟", `${message.to_agent ?? "徒弟"}：${taskText}`);
+    updateAgentFromBackend(message.to_agent ?? "猴哥", "working", taskText);
+    applyBackendActivity(message.to_agent ?? "猴哥", "working", taskText);
   }
   if (message.type === "delegation_reply") {
     appendBackendThread(message.from_agent ?? "徒弟", `交付给唐僧：${message.text ?? "本环节已完成。"}`);
+    recordBackendEvent(`${message.from_agent ?? "徒弟"} → 唐僧`, message.text ?? "本环节已完成。");
     updateAgentFromBackend(message.from_agent ?? "徒弟", "delivered", "已把本环节结果交回唐僧。");
+    applyBackendActivity(message.from_agent ?? "徒弟", "delivered", "已把本环节结果交回唐僧。");
   }
   if (message.type === "tool_use") {
     updateAgentFromBackend(message.agent ?? "猴哥", "working", `使用 ${message.tool ?? "工具"}。`);
+    applyBackendActivity(message.agent ?? "猴哥", "working", `使用 ${message.tool ?? "工具"}。`);
+    recordBackendEvent(`${message.agent ?? "猴哥"} → 工具`, message.tool ?? "工具调用");
   }
   if (message.type === "files_updated") {
     applyBackendFiles(message.files ?? []);
+    recordBackendEvent("Session → 交付物", `更新 ${message.files?.length ?? 0} 个文件。`);
   }
   if (message.type === "error") {
     backend.activeTurn = false;
@@ -1245,12 +1408,45 @@ function renderDeliveries() {
         <strong>${delivery.title}</strong>
         <p>${delivery.result}</p>
       </div>
+      ${String(delivery.result ?? "").startsWith("/api/file/") ? `<a class="ghost-button compact" href="${delivery.result}" target="_blank" rel="noreferrer">打开</a>` : ""}
       <span class="status-pill ${delivery.status === "draft" ? "warning" : delivery.status === "delivered" || delivery.status === "ready" ? "live" : ""}">${statusLabel(delivery.status)}</span>
     </article>`)
     .join("");
 }
 
+function renderProductionLine() {
+  const line = $("#productionLineView");
+  const label = $("#lineStatus");
+  if (label) label.textContent = state.lineStatus;
+  if (!line) return;
+  line.innerHTML = state.productionLine
+    .map((station) => `<article class="station-card ${station.status}">
+      <div class="station-top">
+        <div>
+          <span class="artifact-type">${station.owner}</span>
+          <strong><span class="state-icon">${station.icon}</span>${station.station}</strong>
+        </div>
+        <span class="status-pill ${station.status === "active" || station.status === "done" ? "live" : station.status === "warning" ? "danger" : ""}">${station.activity}</span>
+      </div>
+      <p>${station.note}</p>
+      <div class="station-metrics">
+        <span>WIP ${station.wip}</span>
+        <span>Queue ${station.queue}</span>
+      </div>
+      <div class="batch-list">
+        ${(station.batches ?? [])
+          .map((batch) => `<div class="batch-chip ${batch.status}">
+            <strong>${batch.label}</strong>
+            <span>${batch.id} · ${statusLabel(batch.status)}</span>
+          </div>`)
+          .join("")}
+      </div>
+    </article>`)
+    .join("");
+}
+
 function renderFactory() {
+  renderProductionLine();
   const ops = $("#opsGrid");
   if (ops) {
     ops.innerHTML = state.ops
@@ -1489,6 +1685,36 @@ function bindActions() {
     const action = actionTarget?.dataset.action;
     if (!action) return;
     if (action === "open-command") openCommandMenu();
+    if (action === "create-client") {
+      const input = $("#clientNameInput");
+      try {
+        await createClientProject(input?.value);
+        if (input) input.value = "";
+      } catch (error) {
+        appendBackendThread("唐僧", `创建客户失败：${error.message}`);
+        renderAll();
+      }
+    }
+    if (action === "send-transcript") {
+      try {
+        await sendTranscriptToTangseng();
+      } catch (error) {
+        appendBackendThread("唐僧", `访谈入队失败：${error.message}`);
+        renderAll();
+      }
+    }
+    if (action === "refresh-files") {
+      try {
+        if (isBackendMode()) {
+          await refreshBackendFiles();
+        } else {
+          renderDeliveries();
+        }
+      } catch (error) {
+        appendBackendThread("唐僧", `刷新交付物失败：${error.message}`);
+        renderAll();
+      }
+    }
     if (action === "advance-tick" || action === "run-tangseng") {
       if (isBackendMode()) {
         await sendBackendMessage("请唐僧推进当前批次，并把下一步交给合适的徒弟。");
