@@ -357,7 +357,7 @@ function renderPipeline() {
     </div>
     <div class="production-note">${esc(STATE.stageActivity)}</div>
   `;
-  for (const el of [$("#productionStrip"), $("#productionSidebar")]) {
+  for (const el of [$("#productionSidebar")]) {
     if (el) el.innerHTML = html;
   }
 }
