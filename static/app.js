@@ -8,7 +8,28 @@ const STATE = {
   currentClient: null,
   currentSession: null,
   activeTurn: false,
+  currentStage: "intake",
+  lastHandoff: "等待任务",
+  stageActivity: "尚未开始",
   flowLines: new Map(), // key="A→B" → {el, expiresAt}
+};
+
+const PIPELINE = [
+  { key: "intake", label: "需求进线", owner: "你 / 唐僧" },
+  { key: "plan", label: "方案定界", owner: "唐僧" },
+  { key: "product", label: "产品定型", owner: "八戒" },
+  { key: "build", label: "工程生产", owner: "猴哥" },
+  { key: "qa", label: "质量门禁", owner: "沙僧" },
+  { key: "success", label: "客户回流", owner: "白龙马" },
+  { key: "done", label: "交付收口", owner: "唐僧" },
+];
+
+const AGENT_STAGE = {
+  "唐僧": "plan",
+  "八戒": "product",
+  "猴哥": "build",
+  "沙僧": "qa",
+  "白龙马": "success",
 };
 
 // ────────────────────────────────────────────────────────────
@@ -16,9 +37,18 @@ const STATE = {
 // ────────────────────────────────────────────────────────────
 
 async function init() {
-  await refreshState();
+  try {
+    await refreshState();
+  } catch (e) {
+    setPipelineStage("intake", "等待连接真实后端");
+  }
   bindUI();
-  connectWS();
+  try {
+    connectWS();
+  } catch (e) {
+    addEvent("error", "未连接后端，当前仅预览界面");
+  }
+  renderPipeline();
   setInterval(cleanupFlowLines, 500);
   window.addEventListener("resize", redrawFlowLines);
 }
@@ -106,6 +136,7 @@ function _applyClientSelected(name, sessionId) {
   STATE.currentClient = name;
   STATE.currentSession = sessionId;
   updateSessionPill(true, sessionId);
+  setPipelineStage("intake", `客户：${name}`);
   // 确保客户出现在下拉菜单中
   const sel = $("#clientSelect");
   if (!Array.from(sel.options).find(o => o.value === name)) {
@@ -177,6 +208,7 @@ function handleEvent(msg) {
 
   if (t === "turn_started") {
     setTurnActive(true);
+    setPipelineStage("plan", truncate(msg.user_text, 42));
     addEvent("system", `▶ 新一轮：${truncate(msg.user_text, 30)}`);
     updateAgentStatus("唐僧", "thinking", "理解需求");
     lastAgentMsgEl = null; lastAgentMsgName = null;
@@ -185,6 +217,7 @@ function handleEvent(msg) {
 
   if (t === "turn_ended") {
     setTurnActive(false);
+    setPipelineStage("done", "本轮结束，等待验收或下一轮");
     addEvent("system", "■ 本轮结束");
     return;
   }
@@ -196,15 +229,20 @@ function handleEvent(msg) {
 
   if (t === "agent_status") {
     updateAgentStatus(msg.agent, msg.status, msg.activity);
+    setStageFromAgent(msg.agent, msg.status, msg.activity);
     return;
   }
 
   if (t === "thread_created") {
+    setStageFromAgent(msg.agent, "working", `唐僧召见 ${msg.agent}`);
     addEvent("delegation", `🪷 唐僧召见 <span class="who">${esc(msg.agent)}</span>`);
     return;
   }
 
   if (t === "delegation") {
+    setStageFromAgent(msg.to_agent, "working", msg.text);
+    STATE.lastHandoff = `唐僧 → ${msg.to_agent}`;
+    renderPipeline();
     addEvent("delegation",
       `<span class="who">唐僧</span> → <span class="who">${esc(msg.to_agent)}</span>: ${esc(truncate(msg.text, 50))}`);
     drawFlow("唐僧", msg.to_agent, "outbound");
@@ -213,6 +251,9 @@ function handleEvent(msg) {
   }
 
   if (t === "delegation_reply") {
+    setStageFromAgent(msg.from_agent, "delivered", msg.text);
+    STATE.lastHandoff = `${msg.from_agent} → 唐僧`;
+    renderPipeline();
     addEvent("reply",
       `<span class="who">${esc(msg.from_agent)}</span> 交付 → <span class="who">唐僧</span>: ${esc(truncate(msg.text, 50))}`);
     drawFlow(msg.from_agent, "唐僧", "inbound");
@@ -221,12 +262,14 @@ function handleEvent(msg) {
   }
 
   if (t === "tool_use") {
+    setStageFromAgent(msg.agent, "working", `使用 ${msg.tool}`);
     addEvent("tool", `<span class="who">${esc(msg.agent)}</span> 🔧 ${esc(msg.tool)}`);
     return;
   }
 
   if (t === "files_updated") {
     renderFiles(msg.files || []);
+    setPipelineStage("done", `交付物更新：${(msg.files || []).length} 个文件`);
     return;
   }
 
@@ -237,12 +280,14 @@ function handleEvent(msg) {
 
   if (t === "session_idle") {
     setTurnActive(false);
+    setPipelineStage("done", "队伍待命，等待下一条指令");
     addEvent("system", "✓ 取经队伍待命中");
     return;
   }
 
   if (t === "session_terminated") {
     setTurnActive(false);
+    setPipelineStage("done", "Session 已终止");
     addEvent("error", "Session 已终止");
     updateSessionPill(false);
     return;
@@ -274,6 +319,47 @@ function setTurnActive(active) {
   ta.placeholder = active
     ? "团队正在取经，请等候…"
     : "向唐僧描述客户需求…\n或粘贴录音文字稿，唐僧会派徒弟们各司其职。";
+}
+
+function setStageFromAgent(agent, status, activity) {
+  const stage = AGENT_STAGE[agent];
+  if (!stage) return;
+  if (status === "idle") return;
+  if (status === "delivered" && agent !== "唐僧") {
+    setPipelineStage(stage, `${agent} 已交付给唐僧`);
+    return;
+  }
+  setPipelineStage(stage, activity || `${agent} ${STATUS_LABEL[status] || status || "工作中"}`);
+}
+
+function setPipelineStage(stage, activity) {
+  STATE.currentStage = stage || STATE.currentStage;
+  STATE.stageActivity = activity || STATE.stageActivity;
+  renderPipeline();
+}
+
+function renderPipeline() {
+  const currentIndex = PIPELINE.findIndex((item) => item.key === STATE.currentStage);
+  const html = `
+    <div class="production-head">
+      <span>生产线</span>
+      <strong>${esc(STATE.lastHandoff)}</strong>
+    </div>
+    <div class="production-rail">
+      ${PIPELINE.map((item, index) => {
+        const state = index < currentIndex ? "done" : index === currentIndex ? "current" : "future";
+        return `<div class="production-step ${state}">
+          <span>${index + 1}</span>
+          <strong>${esc(item.label)}</strong>
+          <em>${esc(item.owner)}</em>
+        </div>`;
+      }).join("")}
+    </div>
+    <div class="production-note">${esc(STATE.stageActivity)}</div>
+  `;
+  for (const el of [$("#productionStrip"), $("#productionSidebar")]) {
+    if (el) el.innerHTML = html;
+  }
 }
 
 // ────────────────────────────────────────────────────────────

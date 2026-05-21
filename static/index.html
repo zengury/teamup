@@ -31,6 +31,7 @@
     <!-- ────── 取经地图 ────── -->
     <section class="map">
       <div class="map-title">取 经 路 线 图</div>
+      <div class="production-strip" id="productionStrip" aria-label="任务生产线"></div>
       <svg class="flow-svg" id="flowSvg" preserveAspectRatio="none"></svg>
 
       <!-- 唐僧居中 -->
@@ -94,6 +95,14 @@
           <textarea id="chatInput" rows="3" placeholder="向唐僧描述客户需求…&#10;或粘贴录音文字稿，唐僧会派徒弟们各司其职。"></textarea>
           <button type="submit" id="sendBtn">送上路</button>
         </form>
+      </section>
+
+      <section class="panel production-panel">
+        <header class="panel-title">
+          <span>产线状态</span>
+          <span class="panel-hint">随事件推进</span>
+        </header>
+        <div class="production-strip side-production" id="productionSidebar" aria-label="任务生产线"></div>
       </section>
 
       <section class="panel files-panel">

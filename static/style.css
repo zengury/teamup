@@ -223,6 +223,154 @@ button.mini:hover {
   z-index: 2;
 }
 
+.production-strip {
+  position: absolute;
+  top: 42px;
+  left: 28px;
+  right: 28px;
+  z-index: 6;
+  padding: 10px 12px;
+  border: 1px solid rgba(201, 165, 72, 0.42);
+  border-radius: 6px;
+  background: rgba(250, 243, 227, 0.9);
+  box-shadow: var(--shadow-paper);
+  backdrop-filter: blur(6px);
+}
+
+.production-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-family: var(--font-serif);
+}
+
+.production-head span {
+  color: var(--vermilion);
+  font-size: 12px;
+  letter-spacing: 4px;
+}
+
+.production-head strong {
+  min-width: 0;
+  color: var(--ink-light);
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.production-rail {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.production-step {
+  min-width: 0;
+  padding: 7px 7px 6px;
+  border: 1px solid var(--rice-dark);
+  border-radius: 5px;
+  background: rgba(242, 233, 216, 0.72);
+  font-family: var(--font-serif);
+}
+
+.production-step span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-bottom: 4px;
+  border-radius: 999px;
+  background: var(--rice-dark);
+  color: var(--ink-light);
+  font-size: 10px;
+}
+
+.production-step strong,
+.production-step em {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.production-step strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.production-step em {
+  margin-top: 2px;
+  color: var(--ink-faint);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.production-step.done {
+  border-color: rgba(90, 143, 107, 0.42);
+  background: rgba(90, 143, 107, 0.11);
+}
+
+.production-step.done span {
+  background: var(--jade);
+  color: var(--rice-light);
+}
+
+.production-step.current {
+  border-color: rgba(176, 58, 46, 0.58);
+  background: rgba(176, 58, 46, 0.1);
+  box-shadow: 0 0 0 2px rgba(176, 58, 46, 0.08);
+}
+
+.production-step.current span {
+  background: var(--vermilion);
+  color: var(--rice-light);
+}
+
+.production-note {
+  margin-top: 8px;
+  color: var(--ink-light);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-production {
+  position: static;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: linear-gradient(to bottom, var(--rice-light), var(--rice));
+  backdrop-filter: none;
+}
+
+.side-production .production-head {
+  margin-bottom: 7px;
+}
+
+.side-production .production-rail {
+  gap: 4px;
+}
+
+.side-production .production-step {
+  padding: 6px 5px 5px;
+}
+
+.side-production .production-step strong {
+  font-size: 11px;
+}
+
+.side-production .production-step em {
+  font-size: 9px;
+}
+
 .flow-svg {
   position: absolute;
   inset: 0;
@@ -288,8 +436,8 @@ button.mini:hover {
 .lotus::before { content: "🪷"; }
 
 /* 四徒弟定位 */
-.disciple[style*="--pos: nw"] { top: 8%; left: 4%; }
-.disciple[style*="--pos: ne"] { top: 8%; right: 4%; }
+.disciple[style*="--pos: nw"] { top: 22%; left: 4%; }
+.disciple[style*="--pos: ne"] { top: 22%; right: 4%; }
 .disciple[style*="--pos: sw"] { bottom: 10%; left: 4%; }
 .disciple[style*="--pos: se"] { bottom: 10%; right: 4%; }
 
@@ -441,7 +589,7 @@ button.mini:hover {
 
 .sidebar {
   display: grid;
-  grid-template-rows: 1fr 240px;
+  grid-template-rows: 1fr 178px 240px;
   background: var(--rice-light);
   border-left: 1px solid var(--rice-dark);
 }
