@@ -8,6 +8,10 @@ const STATE = {
   currentClient: null,
   currentSession: null,
   activeTurn: false,
+  activeAgents: new Map(),
+  lastHandoff: "等待任务",
+  lastActivity: "暂无",
+  fileCount: 0,
   flowLines: new Map(), // key="A→B" → {el, expiresAt}
 };
 
@@ -106,6 +110,8 @@ function _applyClientSelected(name, sessionId) {
   STATE.currentClient = name;
   STATE.currentSession = sessionId;
   updateSessionPill(true, sessionId);
+  STATE.lastActivity = `客户：${name}`;
+  renderRunSummary();
   // 确保客户出现在下拉菜单中
   const sel = $("#clientSelect");
   if (!Array.from(sel.options).find(o => o.value === name)) {
@@ -177,6 +183,9 @@ function handleEvent(msg) {
 
   if (t === "turn_started") {
     setTurnActive(true);
+    STATE.lastHandoff = "你 → 唐僧";
+    STATE.lastActivity = truncate(msg.user_text, 44);
+    renderRunSummary();
     addEvent("system", `▶ 新一轮：${truncate(msg.user_text, 30)}`);
     updateAgentStatus("唐僧", "thinking", "理解需求");
     lastAgentMsgEl = null; lastAgentMsgName = null;
@@ -185,6 +194,8 @@ function handleEvent(msg) {
 
   if (t === "turn_ended") {
     setTurnActive(false);
+    STATE.lastActivity = "本轮结束";
+    renderRunSummary();
     addEvent("system", "■ 本轮结束");
     return;
   }
@@ -200,11 +211,16 @@ function handleEvent(msg) {
   }
 
   if (t === "thread_created") {
+    STATE.lastHandoff = `唐僧召见 ${msg.agent}`;
+    renderRunSummary();
     addEvent("delegation", `🪷 唐僧召见 <span class="who">${esc(msg.agent)}</span>`);
     return;
   }
 
   if (t === "delegation") {
+    STATE.lastHandoff = `唐僧 → ${msg.to_agent}`;
+    STATE.lastActivity = truncate(msg.text, 48);
+    renderRunSummary();
     addEvent("delegation",
       `<span class="who">唐僧</span> → <span class="who">${esc(msg.to_agent)}</span>: ${esc(truncate(msg.text, 50))}`);
     drawFlow("唐僧", msg.to_agent, "outbound");
@@ -213,6 +229,9 @@ function handleEvent(msg) {
   }
 
   if (t === "delegation_reply") {
+    STATE.lastHandoff = `${msg.from_agent} → 唐僧`;
+    STATE.lastActivity = truncate(msg.text, 48);
+    renderRunSummary();
     addEvent("reply",
       `<span class="who">${esc(msg.from_agent)}</span> 交付 → <span class="who">唐僧</span>: ${esc(truncate(msg.text, 50))}`);
     drawFlow(msg.from_agent, "唐僧", "inbound");
@@ -221,12 +240,16 @@ function handleEvent(msg) {
   }
 
   if (t === "tool_use") {
+    STATE.lastActivity = `${msg.agent} 使用 ${msg.tool}`;
+    renderRunSummary();
     addEvent("tool", `<span class="who">${esc(msg.agent)}</span> 🔧 ${esc(msg.tool)}`);
     return;
   }
 
   if (t === "files_updated") {
     renderFiles(msg.files || []);
+    STATE.lastActivity = `交付物 ${STATE.fileCount} 个`;
+    renderRunSummary();
     return;
   }
 
@@ -237,12 +260,17 @@ function handleEvent(msg) {
 
   if (t === "session_idle") {
     setTurnActive(false);
+    STATE.lastActivity = "队伍待命";
+    renderRunSummary();
     addEvent("system", "✓ 取经队伍待命中");
     return;
   }
 
   if (t === "session_terminated") {
     setTurnActive(false);
+    STATE.activeAgents.clear();
+    STATE.lastActivity = "Session 已终止";
+    renderRunSummary();
     addEvent("error", "Session 已终止");
     updateSessionPill(false);
     return;
@@ -274,6 +302,7 @@ function setTurnActive(active) {
   ta.placeholder = active
     ? "团队正在取经，请等候…"
     : "向唐僧描述客户需求…\n或粘贴录音文字稿，唐僧会派徒弟们各司其职。";
+  renderRunSummary();
 }
 
 // ────────────────────────────────────────────────────────────
@@ -294,6 +323,13 @@ function updateAgentStatus(name, status, activity) {
   statusEl.textContent = STATUS_LABEL[status] || status || "待命";
   if (typeof activity === "string") actEl.textContent = activity;
   card.classList.toggle("active", !!(status && status !== "idle"));
+  if (status && status !== "idle") {
+    STATE.activeAgents.set(name, { status, activity: activity || "" });
+    STATE.lastActivity = activity || `${name} ${STATUS_LABEL[status] || status}`;
+  } else {
+    STATE.activeAgents.delete(name);
+  }
+  renderRunSummary();
 }
 
 // ────────────────────────────────────────────────────────────
@@ -421,6 +457,8 @@ async function refreshFiles() {
 
 function renderFiles(files) {
   const list = $("#fileList");
+  STATE.fileCount = files.length;
+  renderRunSummary();
   list.innerHTML = "";
   if (!files.length) {
     list.innerHTML = '<div class="empty-hint">还未取得真经</div>';
@@ -466,6 +504,32 @@ function updateSessionPill(active, sid) {
   const pill = $("#sessionPill");
   pill.classList.toggle("active", !!active);
   pill.textContent = active ? `session · ${(sid || "").slice(-6)}` : "未开始";
+}
+
+function renderRunSummary() {
+  const box = $("#runSummary");
+  if (!box) return;
+  const activeNames = Array.from(STATE.activeAgents.keys());
+  const turn = STATE.activeTurn ? "取经中" : STATE.currentSession ? "待命" : "未开始";
+  const activeLabel = activeNames.length ? activeNames.join("、") : "0";
+  box.innerHTML = `
+    <div class="run-cell ${STATE.activeTurn ? "live" : ""}">
+      <span>回合</span>
+      <strong>${esc(turn)}</strong>
+    </div>
+    <div class="run-cell ${activeNames.length ? "warn" : ""}">
+      <span>活跃角色</span>
+      <strong>${esc(activeLabel)}</strong>
+    </div>
+    <div class="run-cell wide">
+      <span>最近交接</span>
+      <strong title="${esc(STATE.lastActivity)}">${esc(STATE.lastHandoff)} · ${esc(STATE.lastActivity)}</strong>
+    </div>
+  `;
+  const updated = $("#runUpdated");
+  if (updated) {
+    updated.textContent = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  }
 }
 
 function truncate(text, n) {

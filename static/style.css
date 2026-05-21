@@ -441,7 +441,7 @@ button.mini:hover {
 
 .sidebar {
   display: grid;
-  grid-template-rows: 1fr 240px;
+  grid-template-rows: 1fr 118px 240px;
   background: var(--rice-light);
   border-left: 1px solid var(--rice-dark);
 }
@@ -472,6 +472,57 @@ button.mini:hover {
   color: var(--ink-faint);
   letter-spacing: 0.5px;
   font-family: var(--font-sans);
+}
+
+/* 当前态势 */
+.run-panel {
+  min-height: 0;
+}
+
+.run-summary {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 88px 88px minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(to bottom, var(--rice-light), var(--rice));
+}
+
+.run-cell {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--rice-dark);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.run-cell span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ink-faint);
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.run-cell strong {
+  display: block;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-cell.live {
+  border-color: rgba(90, 143, 107, 0.45);
+  background: rgba(90, 143, 107, 0.12);
+}
+
+.run-cell.warn {
+  border-color: rgba(201, 165, 72, 0.55);
+  background: rgba(201, 165, 72, 0.14);
 }
 
 /* 对话 */
