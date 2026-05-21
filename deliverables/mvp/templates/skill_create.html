@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}創建 Skill | SweetLoaf{% endblock %}
+
+{% block content %}
+<!-- 顶部栏 -->
+<div class="page-header">
+  <div class="flex-between">
+    <h1 style="font-size: 1.1rem;">✨ 創建技能</h1>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 0.8rem; color: var(--text-light);">{{ user.name }}</span>
+      <a href="/logout" class="btn btn-sm btn-outline" style="padding: 4px 10px; font-size: 0.75rem;">登出</a>
+    </div>
+  </div>
+</div>
+
+<div class="container" style="padding-top: 12px;">
+  <!-- 模式切换 -->
+  <div class="tab-bar">
+    <button class="tab-item active" data-mode="free" onclick="switchMode('free')">✏️ 自由輸入</button>
+    <button class="tab-item" data-mode="template" onclick="switchMode('template')">📋 模板引導</button>
+  </div>
+
+  <!-- ============ 模式1：自由输入 ============ -->
+  <div id="free-input-area">
+    <div class="card" style="margin-bottom: 16px;">
+      <h3 style="margin-bottom: 8px;">🎤 用說的也行，用打的也行</h3>
+      <p style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 12px;">
+        把你做事的經驗、步驟寫下來或說出來，AI 會自動幫你整理成標準技能！
+      </p>
+      <form id="skill-create-form">
+        <div class="form-group">
+          <label for="skill-text-input">描述你的經驗</label>
+          <textarea
+            id="skill-text-input"
+            class="form-control"
+            placeholder="例如：『打麵團的時候，如果室溫超過28度，就要用冰水來打。先量好麵粉和水，冰水比例大概1:1，慢速打3分鐘再快速打8分鐘...』"
+            rows="6"
+          ></textarea>
+        </div>
+
+        <!-- AI 解析按钮 -->
+        <button type="button" id="parse-btn" class="btn btn-outline btn-block" style="margin-bottom: 12px;">
+          🔍 AI 解析預覽
+        </button>
+
+        <!-- 解析预览 -->
+        <div id="parse-preview" class="parse-preview"></div>
+
+        <!-- 保存按钮 -->
+        <button type="button" id="save-skill-btn" class="btn btn-primary btn-block" style="font-size: 1.1rem; padding: 14px;">
+          💾 儲存 Skill
+        </button>
+      </form>
+    </div>
+
+    <!-- 快速示例 -->
+    <div class="card">
+      <h4 style="margin-bottom: 8px;">💡 試試這些範例</h4>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+        <button class="btn btn-sm btn-outline" onclick="fillExample('baking')">🥖 烘焙經驗</button>
+        <button class="btn btn-sm btn-outline" onclick="fillExample('sales')">💬 銷售話術</button>
+        <button class="btn btn-sm btn-outline" onclick="fillExample('manage')">📋 管理方法</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 模式2：模板引导 ============ -->
+  <div id="template-input-area" style="display: none;">
+    <div class="card">
+      <h3 style="margin-bottom: 8px;">📋 選擇模板類型</h3>
+      <p style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 12px;">
+        選擇你的崗位類型，按照提示填寫，系統會自動生成結構化的技能。
+      </p>
+
+      <div class="form-group">
+        <label for="template-select">模板類型</label>
+        <select id="template-select" class="form-control" onchange="switchTemplate()">
+          <option value="baking">🥖 烘焙工藝</option>
+          <option value="sales">💬 銷售技巧</option>
+          <option value="management">📋 管理方法</option>
+          <option value="purchase">📦 後勤採購</option>
+        </select>
+      </div>
+
+      <form id="template-form">
+        <!-- 烘焙模板 -->
+        <div id="tmpl-baking" class="template-questions">
+          <div class="form-group">
+            <label>🥖 產品名稱</label>
+            <input type="text" name="product" class="form-control" placeholder="例如：吐司、可頌、菠蘿包...">
+          </div>
+          <div class="form-group">
+            <label>⚡ 什麼情況下做這個操作？（觸發條件）</label>
+            <textarea name="condition" class="form-control" placeholder="例如：室溫超過28度時、麵團溫度達到26度時..." rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label>📋 具體步驟（一行一個步驟）</label>
+            <textarea name="steps" class="form-control" placeholder="1. 先量好麵粉...&#10;2. 加入冰水...&#10;3. 慢速攪拌..." rows="4"></textarea>
+          </div>
+          <div class="form-group">
+            <label>✅ 這樣做會有什麼效果？</label>
+            <textarea name="effect" class="form-control" placeholder="例如：麵團溫度控制在26度以內，發酵更穩定..." rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label>💡 小提示（選填）</label>
+            <textarea name="tips" class="form-control" placeholder="注意事項、要點提醒..." rows="2"></textarea>
+          </div>
+        </div>
+
+        <!-- 销售模板 -->
+        <div id="tmpl-sales" class="template-questions" style="display: none;">
+          <div class="form-group">
+            <label>💬 銷售場景</label>
+            <input type="text" name="scenario" class="form-control" placeholder="例如：客人問麵包是不是當天做的、客人猶豫要不要買...">
+          </div>
+          <div class="form-group">
+            <label>🗣️ 應對話術 / 方法</label>
+            <textarea name="approach" class="form-control" placeholder="例如：先微笑說『這批是早上剛出爐的』，然後拿試吃給客人..." rows="3"></textarea>
+          </div>
+          <div class="form-group">
+            <label>🔑 關鍵用詞</label>
+            <input type="text" name="keywords" class="form-control" placeholder="例如：新鮮、出爐、限量、推薦...">
+          </div>
+          <div class="form-group">
+            <label>✅ 預期效果</label>
+            <textarea name="effect" class="form-control" placeholder="例如：客人購買意願提升，客單價提高..." rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label>💡 小提示（選填）</label>
+            <textarea name="tips" class="form-control" placeholder="注意事項..." rows="2"></textarea>
+          </div>
+        </div>
+
+        <!-- 管理模板 -->
+        <div id="tmpl-management" class="template-questions" style="display: none;">
+          <div class="form-group">
+            <label>📋 管理場景</label>
+            <input type="text" name="scenario" class="form-control" placeholder="例如：早班交接、庫存盤點、排班安排...">
+          </div>
+          <div class="form-group">
+            <label>🤔 判斷依據 / 決策原則</label>
+            <textarea name="decision" class="form-control" placeholder="例如：庫存低於安全水位時要補貨，補貨量=日均銷量×3天..." rows="3"></textarea>
+          </div>
+          <div class="form-group">
+            <label>📋 執行步驟</label>
+            <textarea name="steps" class="form-control" placeholder="1. 檢查庫存...&#10;2. 計算補貨量...&#10;3. 填寫採購單..." rows="4"></textarea>
+          </div>
+          <div class="form-group">
+            <label>✅ 預期結果</label>
+            <textarea name="expected" class="form-control" placeholder="例如：庫存充足且不浪費，週轉率提升..." rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label>💡 小提示（選填）</label>
+            <textarea name="tips" class="form-control" placeholder="注意事項..." rows="2"></textarea>
+          </div>
+        </div>
+
+        <!-- 采购模板 -->
+        <div id="tmpl-purchase" class="template-questions" style="display: none;">
+          <div class="form-group">
+            <label>📦 採購項目</label>
+            <input type="text" name="item" class="form-control" placeholder="例如：高筋麵粉、奶油、雞蛋...">
+          </div>
+          <div class="form-group">
+            <label>📏 驗收標準</label>
+            <textarea name="standard" class="form-control" placeholder="例如：生產日期在3天內、包裝完整無破損..." rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label>🔍 檢查方法</label>
+            <textarea name="check_method" class="form-control" placeholder="例如：打開包裝聞味道、檢查顏色是否正常..." rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label>⚠️ 特殊處理</label>
+            <textarea name="special_handling" class="form-control" placeholder="例如：如果品質不合格，拍照回報並退貨..." rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label>💡 小提示（選填）</label>
+            <textarea name="tips" class="form-control" placeholder="注意事項..." rows="2"></textarea>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block" style="font-size: 1.1rem; padding: 14px; margin-top: 8px;">
+          💾 建立 Skill
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ---- 模式切换 ----
+function switchMode(mode) {
+  document.querySelectorAll('.tab-item').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.mode === mode);
+  });
+  document.getElementById('free-input-area').style.display = mode === 'free' ? 'block' : 'none';
+  document.getElementById('template-input-area').style.display = mode === 'template' ? 'block' : 'none';
+}
+
+// ---- 模板切换 ----
+function switchTemplate() {
+  var val = document.getElementById('template-select').value;
+  document.querySelectorAll('.template-questions').forEach(function(el) {
+    el.style.display = 'none';
+  });
+  var target = document.getElementById('tmpl-' + val);
+  if (target) target.style.display = 'block';
+}
+
+// ---- 填充示例 ----
+function fillExample(type) {
+  var textarea = document.getElementById('skill-text-input');
+  var examples = {
+    baking: '打麵團的時候，如果室溫超過28度，就要用冰水來打。先量好麵粉和水，冰水比例大概1:1，慢速打3分鐘再快速打8分鐘。這樣麵團溫度可以控制在26度以內，發酵更穩定。注意：冰水不要一次加太多，分次加入比較好控制。',
+    sales: '有客人問麵包是不是當天做的時候，要微笑回答"這批是早上剛出爐的哦"，然後順便拿一塊試吃給客人。客人吃了覺得好吃通常就會買，而且還會多買幾個。注意：說話語氣要自然，不要像背稿。',
+    manage: '每天早班交接的時候，要先檢查昨天賣完的產品清單，然後根據庫存和天氣決定今天的產量。下雨天麵包銷量會少20%，所以要減少產量避免浪費。'
+  };
+  textarea.value = examples[type] || '';
+  textarea.focus();
+}
+</script>
+{% endblock %}

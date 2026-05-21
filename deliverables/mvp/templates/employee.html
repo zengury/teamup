@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}{{ target_user.name }} 的技能地圖 | SweetLoaf{% endblock %}
+
+{% block content %}
+<!-- 顶部栏 -->
+<div class="page-header">
+  <div class="flex-between">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <a href="/dashboard" style="font-size: 1.2rem; color: var(--text-muted); text-decoration: none;">‹ 返回</a>
+      <h1 style="font-size: 1.1rem;">🗺️ 技能地圖</h1>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 0.8rem; color: var(--text-light);">{{ user.name }}</span>
+      <a href="/logout" class="btn btn-sm btn-outline" style="padding: 4px 10px; font-size: 0.75rem;">登出</a>
+    </div>
+  </div>
+</div>
+
+<div class="container" style="padding-top: 12px;">
+  <!-- 员工信息卡片 -->
+  <div class="card" style="text-align: center; padding: 24px 16px;">
+    <div style="font-size: 3rem; margin-bottom: 8px;">
+      {% if target_user.role == '老板' %}👨‍🍳
+      {% elif target_user.role == '店長' %}👔
+      {% elif target_user.role == '烘焙師' %}👨‍🍳
+      {% elif target_user.role == '學徒' %}🧑‍🍳
+      {% elif target_user.role == '銷售' %}👩‍💼
+      {% elif target_user.role == '後勤' %}📦
+      {% else %}🙋
+      {% endif %}
+    </div>
+    <h2 style="font-size: 1.3rem; margin-bottom: 4px;">{{ target_user.name }}</h2>
+    <span class="tag tag-primary">{{ target_user.role }}</span>
+    {% if target_user.phone %}
+    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px;">📞 {{ target_user.phone }}</div>
+    {% endif %}
+  </div>
+
+  <!-- 统计概览 -->
+  <div class="stats-grid" style="margin-bottom: 16px;">
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--text);">{{ stats.total }}</div>
+      <div class="stat-label">總技能</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--success);">{{ stats.mastered }}</div>
+      <div class="stat-label">已掌握</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--warning);">{{ stats.learning }}</div>
+      <div class="stat-label">學習中</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--text-muted);">{{ stats.not_started }}</div>
+      <div class="stat-label">未學習</div>
+    </div>
+  </div>
+
+  <!-- 综合掌握率 -->
+  <div class="card" style="margin-bottom: 16px;">
+    <div class="flex-between" style="margin-bottom: 8px;">
+      <h3 style="font-size: 0.9rem;">📊 綜合掌握率</h3>
+      <span style="font-size: 1.1rem; font-weight: 700; color: var(--primary);">{{ stats.completion_percent }}%</span>
+    </div>
+    <div class="progress-bar-wrap" style="width: 100%; height: 12px;">
+      <div class="progress-bar-fill green" style="width: {{ stats.completion_percent }}%; height: 100%; border-radius: 6px;"></div>
+    </div>
+  </div>
+
+  <!-- 技能分类汇总（CSS雷达） -->
+  {% set category_data = {} %}
+  {% for s in skills %}
+    {% if s.category not in category_data %}
+      {% set _ = category_data.update({s.category: {'total': 0, 'mastered': 0}}) %}
+    {% endif %}
+    {% set _ = category_data[s.category].update({'total': category_data[s.category].total + 1}) %}
+    {% if s.status in ('已掌握', '可教授') %}
+      {% set _ = category_data[s.category].update({'mastered': category_data[s.category].mastered + 1}) %}
+    {% endif %}
+  {% endfor %}
+
+  {% if category_data %}
+  <div class="card" style="margin-bottom: 16px;">
+    <h3 style="font-size: 0.9rem; margin-bottom: 12px;">🎯 各類技能掌握情況</h3>
+    {% for cat, data in category_data.items() %}
+    <div style="margin-bottom: 10px;">
+      <div class="flex-between" style="margin-bottom: 4px;">
+        <span style="font-size: 0.85rem; font-weight: 500;">
+          {% if cat == '烘焙工藝' %}🥖{% elif cat == '銷售技巧' %}💬{% elif cat == '管理方法' %}📋{% elif cat == '後勤採購' %}📦{% else %}📌{% endif %}
+          {{ cat }}
+        </span>
+        <span style="font-size: 0.78rem; color: var(--text-light);">{{ data.mastered }}/{{ data.total }}</span>
+      </div>
+      <div class="progress-bar-wrap" style="width: 100%;">
+        {% set pct = (data.mastered / data.total * 100) if data.total > 0 else 0 %}
+        <div class="progress-bar-fill {% if pct >= 70 %}green{% elif pct >= 40 %}yellow{% else %}red{% endif %}" style="width: {{ pct }}%;"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- 技能列表 - 按状态分类 -->
+  {% set status_order = ['已掌握', '可教授', '學習中', '未學習'] %}
+  {% set status_labels = {
+    '已掌握': {'icon': '✅', 'label': '已掌握', 'class': 'mastered'},
+    '可教授': {'icon': '🎓', 'label': '可教授', 'class': 'teaching'},
+    '學習中': {'icon': '📖', 'label': '學習中', 'class': 'learning'},
+    '未學習': {'icon': '📋', 'label': '未學習', 'class': 'not-started'}
+  } %}
+
+  {% for status in status_order %}
+    {% set group = skills | selectattr('status', 'equalto', status) | list %}
+    {% if group %}
+    <div class="skill-tree-section">
+      <h3>
+        {{ status_labels[status].icon }}
+        {{ status_labels[status].label }}
+        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 400;">({{ group|length }})</span>
+      </h3>
+
+      {% for s in group %}
+      <a href="/skill/{{ s.skill_id }}" style="text-decoration: none; color: inherit;">
+        <div class="skill-progress-item">
+          <div class="skill-name">{{ s.title }}</div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill
+              {% if status in ('已掌握', '可教授') %}green
+              {% elif status == '學習中' %}yellow
+              {% else %}red{% endif %}"
+              style="width: {{ s.progress }}%;">
+            </div>
+          </div>
+          <span class="progress-status {{ status_labels[status].class }}">{{ status_labels[status].label }}</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endfor %}
+
+  <!-- 空状态 -->
+  {% if skills|length == 0 %}
+  <div class="empty-state">
+    <div class="empty-icon">🗺️</div>
+    <p>{{ target_user.name }} 還沒有學習任何技能</p>
+    <a href="/skills" class="btn btn-primary" style="margin-top: 12px;">📚 去技能庫看看</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

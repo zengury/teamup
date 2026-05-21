@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}效率看板 | SweetLoaf{% endblock %}
+
+{% block content %}
+<!-- 顶部栏 -->
+<div class="page-header flex-between">
+  <div>
+    <span style="font-size: 1.2rem;">📊</span>
+    <h1 style="display: inline; margin-left: 6px; font-size: 1.1rem;">效率看板</h1>
+  </div>
+  <div style="display: flex; align-items: center; gap: 10px;">
+    <span style="font-size: 0.85rem; color: var(--text-light);">
+      {{ user.name }} · {{ user.role }}
+    </span>
+    <a href="/logout" class="btn btn-sm btn-outline" style="padding: 4px 10px; font-size: 0.75rem;">登出</a>
+  </div>
+</div>
+
+<div class="container" style="padding-top: 12px;">
+  <!-- 统计卡片 -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon">📦</div>
+      <div class="stat-value">{{ stats.total_skills }}</div>
+      <div class="stat-label">總技能數</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">✅</div>
+      <div class="stat-value">
+        {% set mastered_total = namespace(count=0) %}
+        {% for es in stats.employee_stats %}
+          {% set mastered_total.count = mastered_total.count + es.mastered %}
+        {% endfor %}
+        {{ mastered_total.count }}
+      </div>
+      <div class="stat-label">已掌握</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">📖</div>
+      <div class="stat-value">
+        {% set learning_total = namespace(count=0) %}
+        {% for es in stats.employee_stats %}
+          {% set learning_total.count = learning_total.count + es.learning %}
+        {% endfor %}
+        {{ learning_total.count }}
+      </div>
+      <div class="stat-label">學習中</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">📋</div>
+      <div class="stat-value">
+        {% set not_started_total = namespace(count=0) %}
+        {% for es in stats.employee_stats %}
+          {% set not_started_total.count = not_started_total.count + es.not_started %}
+        {% endfor %}
+        {{ not_started_total.count }}
+      </div>
+      <div class="stat-label">未學習</div>
+    </div>
+  </div>
+
+  <!-- 技能增长趋势图（纯 CSS 柱状图） -->
+  <div class="chart-container">
+    <h3>📈 團隊技能增長趨勢（近7天）</h3>
+    <div style="display: flex; align-items: flex-end; gap: 6px; height: 140px; padding-top: 16px;">
+      {% set max_val = trend_data | map(attribute='count') | max %}
+      {% set max_val = max_val if max_val > 0 else 1 %}
+      {% for item in trend_data %}
+      <div style="flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end;">
+        <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 600;">{{ item.count }}</div>
+        <div style="width: 100%; max-width: 36px; border-radius: 6px 6px 2px 2px;
+                    background: linear-gradient(180deg, var(--primary-light), var(--primary));
+                    height: {{ (item.count / max_val * 100) | int }}%;
+                    min-height: {{ 8 if item.count > 0 else 4 }}px;
+                    transition: height 0.5s ease;">
+        </div>
+        <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: 6px; white-space: nowrap;">{{ item.label }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- 员工技能掌握排行 -->
+  <div class="chart-container">
+    <h3>🏆 員工技能掌握排行</h3>
+    <ol class="top-skills-list">
+      {% for es in stats.employee_stats %}
+      <li>
+        <div class="rank {% if loop.index == 1 %}top1{% elif loop.index == 2 %}top2{% elif loop.index == 3 %}top3{% endif %}">
+          {{ loop.index }}
+        </div>
+        <div style="flex: 1;">
+          <div style="font-size: 0.9rem; font-weight: 500;">{{ es.name }}</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">{{ es.role }}</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 0.85rem; font-weight: 600; color: var(--success);">{{ es.mastered }} 項</div>
+          <div style="font-size: 0.7rem; color: var(--text-muted);">已掌握</div>
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+
+  <!-- 热门技能排行 -->
+  <div class="chart-container">
+    <h3>🔥 熱門技能排行</h3>
+    <ol class="top-skills-list">
+      {% for s in stats.top_skills[:5] %}
+      <li>
+        <div class="rank {% if loop.index == 1 %}top1{% elif loop.index == 2 %}top2{% elif loop.index == 3 %}top3{% endif %}">
+          {{ loop.index }}
+        </div>
+        <a href="/skill/{{ s.id }}" class="skill-name" style="flex: 1;">{{ s.title }}</a>
+        <div style="text-align: right;">
+          <div style="font-size: 0.78rem; color: var(--text-muted);">
+            ❤️ {{ s.like_count }} ⭐ {{ s.collect_count }}
+          </div>
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+
+  <!-- 最近操作日志 -->
+  <div class="chart-container">
+    <h3>🕐 最近操作記錄</h3>
+    {% if recent_logs %}
+    <ul class="log-list">
+      {% for log in recent_logs %}
+      <li>
+        <div class="log-dot"></div>
+        <div style="flex: 1;">
+          <span style="font-weight: 500;">{{ log.user_name }}</span>
+          <span style="color: var(--text-light);">{{ log.action }}</span>
+          {% if log.skill_title %}
+          <a href="/skill/{{ log.skill_id }}" style="color: var(--primary);">《{{ log.skill_title }}》</a>
+          {% endif %}
+          {% if log.detail %}
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">{{ log.detail }}</div>
+          {% endif %}
+        </div>
+        <div class="log-time">{{ log.created_at[-8:-3] if log.created_at else '' }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📝</div>
+      <p>暫無操作記錄，快去創建你的第一個技能吧！</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

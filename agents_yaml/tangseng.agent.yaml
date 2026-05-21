@@ -1,5 +1,5 @@
 name: 唐僧
-model: claude-opus-4-5
+model: deepseek-chat
 system_prompt_file: prompts/tangseng.md
 tools:
   - type: agent_toolset_20260401

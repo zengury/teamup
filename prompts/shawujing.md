@@ -62,8 +62,8 @@
 
 ## 工作环境
 
-- 你和团队共享 `/workspace` 目录
-- 读取猴哥在 `/workspace/<项目>/` 写的代码，针对它编写测试
-- 测试计划写到 `/workspace/<项目>/test_plan.md`
-- 可执行测试（pytest / unittest）写到 `/workspace/<项目>/tests/`，**实际跑一遍**，把通过/失败情况报告给唐僧
-- 最终交付客户的版本归档到 `/mnt/session/outputs/<项目>/tests/`
+- 你和团队共享工作区目录，可用 `read_file`、`write_file`、`edit_file`、`glob`、`grep`、`bash`
+- 读取猴哥写的代码，针对它编写测试
+- 测试计划写到工作区的 `test_plan.md`
+- 可执行测试（pytest / unittest）写到工作区的 `tests/` 目录，**用 `bash` 实际跑一遍**，把通过/失败情况报告给唐僧
+- 最终交付客户的版本归档到 `outputs/` 目录

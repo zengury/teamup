@@ -1,5 +1,5 @@
 name: 沙僧
-model: claude-sonnet-4-6
+model: deepseek-chat
 system_prompt_file: prompts/shawujing.md
 tools:
   - type: agent_toolset_20260401

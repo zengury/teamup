@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}SweetLoaf 技能系統{% endblock %}
+
+{% block content %}
+<div class="container" style="padding-top: 32px; text-align: center;">
+  <!-- Logo / 品牌 -->
+  <div style="margin-bottom: 24px;">
+    <div style="font-size: 3rem; margin-bottom: 8px;">🥖</div>
+    <h1 style="font-size: 1.6rem; color: var(--primary); margin-bottom: 4px;">SweetLoaf</h1>
+    <p style="color: var(--text-light); font-size: 0.9rem;">AI 組織轉型 · 技能經驗系統</p>
+  </div>
+
+  <!-- 欢迎语 -->
+  <div class="card" style="text-align: left; margin-bottom: 20px;">
+    <p style="font-size: 0.9rem; line-height: 1.7; color: var(--text);">
+      👋 歡迎回來！<br>
+      點擊你的名字進入系統，開始記錄和分享你的烘焙經驗吧！
+    </p>
+  </div>
+
+  <!-- 员工选择列表 -->
+  <div style="text-align: left; margin-bottom: 12px;">
+    <h2 style="font-size: 1rem; color: var(--text-light);">選擇角色</h2>
+  </div>
+
+  <div class="user-grid">
+    {% for u in users %}
+    <a href="/login/{{ u.id }}" class="user-card" style="text-decoration: none; color: inherit;">
+      <div class="user-avatar">
+        {% if u.role == '老板' %}👨‍🍳
+        {% elif u.role == '店長' %}👔
+        {% elif u.role == '烘焙師' %}👨‍🍳
+        {% elif u.role == '學徒' %}🧑‍🍳
+        {% elif u.role == '銷售' %}👩‍💼
+        {% elif u.role == '後勤' %}📦
+        {% else %}🙋
+        {% endif %}
+      </div>
+      <div class="user-name">{{ u.name }}</div>
+      <div class="user-role">{{ u.role }}</div>
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- 页脚 -->
+  <div style="margin-top: 32px; padding: 16px 0; font-size: 0.75rem; color: var(--text-muted);">
+    SweetLoaf 台南 · AI 組織轉型系統 v1.0
+  </div>
+</div>
+{% endblock %}

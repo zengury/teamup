@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}流程管理 | SweetLoaf{% endblock %}
+
+{% block content %}
+<!-- 顶部栏 -->
+<div class="page-header">
+  <div class="flex-between">
+    <h1 style="font-size: 1.1rem;">⚙️ 流程管理</h1>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 0.8rem; color: var(--text-light);">{{ user.name }}</span>
+      <a href="/logout" class="btn btn-sm btn-outline" style="padding: 4px 10px; font-size: 0.75rem;">登出</a>
+    </div>
+  </div>
+</div>
+
+<div class="container" style="padding-top: 12px;">
+  <!-- 引导说明 -->
+  <div class="card" style="margin-bottom: 16px; background: var(--bg-secondary);">
+    <p style="font-size: 0.85rem; line-height: 1.7; color: var(--text);">
+      🔄 <strong>流程</strong>是把多個技能串聯起來，形成完整的工作SOP。<br>
+      例如：<em>「早班準備流程」</em>可以包含 <strong>烤箱預熱技能</strong> → <strong>麵團解凍技能</strong> → <strong>陳列擺放技能</strong>。
+    </p>
+  </div>
+
+  <!-- 流程列表 -->
+  {% if workflows %}
+    {% for w in workflows %}
+    <div class="workflow-card">
+      <div class="flex-between">
+        <div class="workflow-name">{{ w.name }}</div>
+        {% if w.is_active %}
+        <span class="tag tag-success">啟用中</span>
+        {% else %}
+        <span class="tag tag-outline">已停用</span>
+        {% endif %}
+      </div>
+      {% if w.description %}
+      <div class="workflow-desc">{{ w.description }}</div>
+      {% endif %}
+      <div class="workflow-meta">
+        <span>👤 {{ w.creator_name }}</span>
+        <span>📅 {{ w.created_at[:10] if w.created_at else '' }}</span>
+      </div>
+
+      <!-- 流程配置展示 -->
+      {% if w.config %}
+      <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-light);">
+        <details>
+          <summary style="font-size: 0.8rem; color: var(--primary); cursor: pointer;">📋 查看流程配置</summary>
+          <pre style="font-size: 0.75rem; color: var(--text-light); margin-top: 8px; white-space: pre-wrap; background: var(--bg-secondary); padding: 10px; border-radius: var(--radius-xs);">{{ w.config }}</pre>
+        </details>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+  <!-- 空状态 -->
+  <div class="empty-state">
+    <div class="empty-icon">⚙️</div>
+    <p>目前還沒有建立任何流程</p>
+    <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">
+      流程功能即將上線，敬請期待！
+    </p>
+  </div>
+  {% endif %}
+
+  <!-- 流程创建说明 -->
+  <div class="card" style="margin-top: 16px;">
+    <h3 style="font-size: 0.95rem; margin-bottom: 8px;">🔜 即將推出</h3>
+    <ul style="font-size: 0.85rem; color: var(--text-light); line-height: 2; padding-left: 20px;">
+      <li>拖曳式流程編輯器</li>
+      <li>從技能庫直接選取技能加入流程</li>
+      <li>設定流程觸發條件（時間、事件、手動）</li>
+      <li>流程執行記錄與追蹤</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

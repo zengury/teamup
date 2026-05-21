@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}技能庫 | SweetLoaf{% endblock %}
+
+{% block content %}
+<!-- 顶部栏 -->
+<div class="page-header">
+  <div class="flex-between">
+    <h1 style="font-size: 1.1rem;">📚 技能庫</h1>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 0.8rem; color: var(--text-light);">{{ user.name }}</span>
+      <a href="/logout" class="btn btn-sm btn-outline" style="padding: 4px 10px; font-size: 0.75rem;">登出</a>
+    </div>
+  </div>
+</div>
+
+<div class="container" style="padding-top: 12px;">
+  <!-- 搜索框 -->
+  <form method="GET" action="/skills">
+    <input type="hidden" name="category" value="{{ current_category }}">
+    <div class="search-bar">
+      <span class="search-icon">🔍</span>
+      <input
+        id="skill-search-input"
+        type="text"
+        name="keyword"
+        placeholder="搜尋技能名稱、關鍵字..."
+        value="{{ current_keyword }}"
+        autocomplete="off"
+      >
+      {% if current_keyword %}
+      <a href="/skills" style="font-size: 0.8rem; color: var(--text-muted); text-decoration: none;">✕ 清除</a>
+      {% endif %}
+    </div>
+  </form>
+
+  <!-- 分类筛选 -->
+  <div class="filter-bar">
+    <a href="/skills?keyword={{ current_keyword }}" class="filter-chip {% if not current_category %}active{% endif %}">全部</a>
+    {% set categories = ['烘焙工藝', '銷售技巧', '管理方法', '後勤採購', '通用'] %}
+    {% for cat in categories %}
+    <a href="/skills?keyword={{ current_keyword }}&category={{ cat }}" class="filter-chip {% if current_category == cat %}active{% endif %}">
+      {% if cat == '烘焙工藝' %}🥖
+      {% elif cat == '銷售技巧' %}💬
+      {% elif cat == '管理方法' %}📋
+      {% elif cat == '後勤採購' %}📦
+      {% else %}📌
+      {% endif %}
+      {{ cat }}
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- 技能列表 -->
+  {% if skills %}
+  <div class="skills-grid">
+    {% for s in skills %}
+    <a href="/skill/{{ s.id }}" class="skill-card" style="text-decoration: none; color: inherit;">
+      <div class="skill-title">{{ s.title }}</div>
+      <div class="skill-creator">
+        <div class="mini-avatar">
+          {% if s.creator_name %}👤{% else %}❓{% endif %}
+        </div>
+        <span>{{ s.creator_name }}</span>
+        <span class="tag tag-outline" style="margin-left: auto;">
+          {% if s.category == '烘焙工藝' %}🥖
+          {% elif s.category == '銷售技巧' %}💬
+          {% elif s.category == '管理方法' %}📋
+          {% elif s.category == '後勤採購' %}📦
+          {% else %}📌
+          {% endif %}
+          {{ s.category }}
+        </span>
+      </div>
+      <div class="skill-preview">
+        {% if s.content.trigger_condition %}
+        ⚡ {{ s.content.trigger_condition[:60] }}
+        {% elif s.content.steps and s.content.steps[0] %}
+        📋 {{ s.content.steps[0][:60] }}
+        {% else %}
+        暫無詳細描述
+        {% endif %}
+      </div>
+      <div class="skill-meta">
+        <span>❤️ {{ s.like_count }}</span>
+        <span>⭐ {{ s.collect_count }}</span>
+        <span>👁️ {{ s.view_count }}</span>
+        <span style="margin-left: auto;">{{ s.created_at[:10] if s.created_at else '' }}</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">🔍</div>
+    <p>
+      {% if current_keyword or current_category %}
+      沒有找到符合條件的技能，試試其他關鍵字？
+      {% else %}
+      技能庫還是空的，快去創建第一個技能吧！
+      {% endif %}
+    </p>
+    <a href="/skill/create" class="btn btn-primary" style="margin-top: 12px;">✨ 創建技能</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

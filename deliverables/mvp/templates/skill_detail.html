@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}{{ skill.title }} | SweetLoaf{% endblock %}
+
+{% block content %}
+<!-- 顶部栏 -->
+<div class="page-header">
+  <div class="flex-between">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <a href="/skills" style="font-size: 1.2rem; color: var(--text-muted); text-decoration: none;">‹ 返回</a>
+      <h1 style="font-size: 1rem; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ skill.title }}</h1>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 0.8rem; color: var(--text-light);">{{ user.name }}</span>
+      <a href="/logout" class="btn btn-sm btn-outline" style="padding: 4px 10px; font-size: 0.75rem;">登出</a>
+    </div>
+  </div>
+</div>
+
+<div class="container" style="padding-top: 12px;">
+  <!-- 技能头部信息 -->
+  <div class="skill-detail-header">
+    <div class="skill-title">{{ skill.title }}</div>
+    <div class="skill-meta">
+      <span class="tag tag-primary">
+        {% if skill.category == '烘焙工藝' %}🥖{% elif skill.category == '銷售技巧' %}💬{% elif skill.category == '管理方法' %}📋{% elif skill.category == '後勤採購' %}📦{% else %}📌{% endif %}
+        {{ skill.category }}
+      </span>
+      {% if skill.tags %}
+        {% for tag in skill.tags.split(',')[:3] %}
+        <span class="tag tag-outline">{{ tag.strip() }}</span>
+        {% endfor %}
+      {% endif %}
+      <span style="margin-left: auto; font-size: 0.78rem;">👤 {{ creator_name }}</span>
+    </div>
+  </div>
+
+  <!-- 操作按钮：点赞 / 收藏 -->
+  <div class="action-buttons">
+    <button class="action-btn" data-action="like" data-skill-id="{{ skill.id }}">
+      <span class="action-icon">❤️</span>
+      <span>點讚</span>
+      <span class="action-count" style="font-size: 0.75rem;">{{ skill.like_count }}</span>
+    </button>
+    <button class="action-btn" data-action="collect" data-skill-id="{{ skill.id }}">
+      <span class="action-icon">⭐</span>
+      <span>收藏</span>
+      <span class="action-count" style="font-size: 0.75rem;">{{ skill.collect_count }}</span>
+    </button>
+    <button class="action-btn" onclick="document.getElementById('progress-section').scrollIntoView({behavior:'smooth'});">
+      <span class="action-icon">📖</span>
+      <span>學習</span>
+    </button>
+  </div>
+
+  <!-- 触发条件 -->
+  {% if skill.content.trigger_condition %}
+  <div class="skill-section">
+    <h3>⚡ 觸發條件</h3>
+    <p style="font-size: 0.95rem; line-height: 1.6; color: var(--text); padding: 8px 0;">{{ skill.content.trigger_condition }}</p>
+  </div>
+  {% endif %}
+
+  <!-- 操作步骤 -->
+  {% if skill.content.steps and skill.content.steps|length > 0 %}
+  <div class="skill-section">
+    <h3>📋 操作步驟</h3>
+    <ol class="step-list">
+      {% for step in skill.content.steps %}
+      <li>{{ step }}</li>
+      {% endfor %}
+    </ol>
+  </div>
+  {% endif %}
+
+  <!-- 预期效果 -->
+  {% if skill.content.expected_result %}
+  <div class="skill-section">
+    <h3>✅ 預期效果</h3>
+    <p style="font-size: 0.95rem; line-height: 1.6; color: var(--text); padding: 8px 0;">{{ skill.content.expected_result }}</p>
+  </div>
+  {% endif %}
+
+  <!-- 小提示 -->
+  {% if skill.content.tips %}
+  <div class="skill-section">
+    <h3>💡 小提示</h3>
+    <p style="font-size: 0.95rem; line-height: 1.6; color: var(--text); padding: 8px 0; background: var(--bg-secondary); border-radius: var(--radius-sm); padding: 12px;">{{ skill.content.tips }}</p>
+  </div>
+  {% endif %}
+
+  <!-- 原始记录 -->
+  {% if skill.content.raw_transcript %}
+  <div class="skill-section">
+    <h3>📝 原始記錄</h3>
+    <details>
+      <summary style="font-size: 0.85rem; color: var(--text-light); cursor: pointer;">點擊展開原始語音/文字記錄</summary>
+      <p style="font-size: 0.85rem; color: var(--text-light); line-height: 1.6; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); margin-top: 8px;">
+        {{ skill.content.raw_transcript }}
+      </p>
+    </details>
+  </div>
+  {% endif %}
+
+  <!-- 学习进度更新 -->
+  <div class="skill-section" id="progress-section">
+    <h3>📖 學習進度</h3>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <button class="btn btn-sm btn-outline progress-update-btn" data-skill-id="{{ skill.id }}" data-status="未學習">📋 未學習</button>
+      <button class="btn btn-sm btn-outline progress-update-btn" data-skill-id="{{ skill.id }}" data-status="學習中">📖 學習中</button>
+      <button class="btn btn-sm btn-success progress-update-btn" data-skill-id="{{ skill.id }}" data-status="已掌握">✅ 已掌握</button>
+      <button class="btn btn-sm btn-primary progress-update-btn" data-skill-id="{{ skill.id }}" data-status="可教授">🎓 可教授</button>
+    </div>
+  </div>
+
+  <!-- 评论 -->
+  <div class="skill-section">
+    <h3>💬 評論</h3>
+    <form id="comment-form" data-skill-id="{{ skill.id }}" style="display: flex; gap: 8px; margin-bottom: 12px;">
+      <input type="text" name="comment" class="form-control" placeholder="寫下你的想法..." style="flex: 1; min-height: 0; padding: 10px 12px;">
+      <button type="submit" class="btn btn-primary btn-sm">送出</button>
+    </form>
+  </div>
+
+  <!-- 版本历史 -->
+  {% if versions and versions|length > 0 %}
+  <div class="skill-section">
+    <h3>📜 版本歷史</h3>
+    {% for v in versions %}
+    <div class="version-item">
+      <div>
+        <span class="version-number">v{{ v.version_number }}</span>
+        <span style="color: var(--text-light); margin-left: 6px;">by {{ v.creator_name }}</span>
+      </div>
+      <div style="font-size: 0.75rem; color: var(--text-muted);">{{ v.created_at[:10] if v.created_at else '' }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- 相关推荐 -->
+  {% if related and related|length > 0 %}
+  <div class="skill-section">
+    <h3>🔗 相關推薦</h3>
+    {% for r in related %}
+    <a href="/skill/{{ r.id }}" class="skill-card" style="display: block; text-decoration: none; color: inherit; margin-bottom: 8px;">
+      <div class="skill-title" style="font-size: 0.9rem;">{{ r.title }}</div>
+      <div class="skill-meta">
+        <span>❤️ {{ r.like_count }}</span>
+        <span>⭐ {{ r.collect_count }}</span>
+        <span class="tag tag-outline" style="margin-left: auto;">{{ r.category }}</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

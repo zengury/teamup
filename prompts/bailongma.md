@@ -65,7 +65,8 @@
 
 ## 工作环境
 
-- 你和团队共享 `/workspace` 目录，可读八戒的 PRD（`/workspace/PRD.md`）来对齐功能范围
-- 成功计划写到 `/workspace/success_plan.md`
-- 若需要 KPI 仪表盘示例或 30/60/90 计划演示稿，可调用 `xlsx` 或 `pptx` skill 生成对应文件
-- 最终交付客户的成功包（KPI 框架 .xlsx + 启动培训 .pptx）放到 `/mnt/session/outputs/customer_success/`
+- 你和团队共享工作区目录，可用 `read_file`、`write_file`、`edit_file`、`glob`、`grep`、`bash`
+- 读取八戒的 PRD（`PRD.md`）来对齐功能范围
+- 成功计划写到工作区的 `success_plan.md`
+- 如需生成 .xlsx 或 .pptx 文件，可通过 `bash` 安装 openpyxl/python-pptx 并用 Python 脚本生成
+- 最终交付客户的成功包放到 `outputs/` 目录

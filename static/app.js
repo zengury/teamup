@@ -1,5 +1,5 @@
 /* ============================================================
-   TeamUp 控制台 · 浏览器逻辑
+   TeamUp 控制台 · 浏览器逻辑 (fixed)
    ============================================================ */
 
 const $ = (sel) => document.querySelector(sel);
@@ -8,7 +8,7 @@ const STATE = {
   currentClient: null,
   currentSession: null,
   activeTurn: false,
-  flowLines: new Map(), // key="A→B" → {el, expiresAt}
+  flowLines: new Map(),
 };
 
 // ────────────────────────────────────────────────────────────
@@ -19,24 +19,29 @@ async function init() {
   await refreshState();
   bindUI();
   connectWS();
+  initResize();
   setInterval(cleanupFlowLines, 500);
   window.addEventListener("resize", redrawFlowLines);
 }
 
 async function refreshState() {
-  const r = await fetch("/api/state");
-  const s = await r.json();
-  populateClientSelect(s.clients, s.current_client);
-  if (s.current_client) {
-    STATE.currentClient = s.current_client;
-    STATE.currentSession = s.current_session;
-    updateSessionPill(true, s.current_session);
+  try {
+    const r = await fetch("/api/state");
+    const s = await r.json();
+    populateClientSelect(s.clients, s.current_client);
+    if (s.current_client) {
+      STATE.currentClient = s.current_client;
+      STATE.currentSession = s.current_session;
+      updateSessionPill(true, s.current_session);
+    }
+    for (const [name, info] of Object.entries(s.agent_status || {})) {
+      updateAgentStatus(name, info.status, info.activity);
+    }
+    setTurnActive(s.active_turn || false);
+    refreshFiles();
+  } catch (e) {
+    console.error("refreshState failed:", e);
   }
-  for (const [name, info] of Object.entries(s.agent_status || {})) {
-    updateAgentStatus(name, info.status, info.activity);
-  }
-  setTurnActive(s.active_turn || false);
-  refreshFiles();
 }
 
 function populateClientSelect(clients, selected) {
@@ -80,33 +85,40 @@ function bindUI() {
 }
 
 async function selectClient(name) {
-  const r = await fetch("/api/client/select", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
-  });
-  if (!r.ok) { addChat("system", `选择客户失败: ${await r.text()}`); return; }
-  const data = await r.json();
-  _applyClientSelected(name, data.session_id);
+  try {
+    const r = await fetch("/api/client/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!r.ok) { addChat("system", `选择客户失败: ${await r.text()}`); return; }
+    const data = await r.json();
+    _applyClientSelected(name, data.session_id);
+  } catch (e) {
+    addChat("system", `网络错误: ${e}`);
+  }
 }
 
 async function newSession(name) {
-  const r = await fetch("/api/client/new", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
-  });
-  if (!r.ok) { addChat("system", `开新局失败: ${await r.text()}`); return; }
-  const data = await r.json();
-  _applyClientSelected(name, data.session_id);
-  addChat("system", `已为「${name}」开启新局 ✦`);
+  try {
+    const r = await fetch("/api/client/new", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!r.ok) { addChat("system", `开新局失败: ${await r.text()}`); return; }
+    const data = await r.json();
+    _applyClientSelected(name, data.session_id);
+    addChat("system", `已为「${name}」开启新局 ✦`);
+  } catch (e) {
+    addChat("system", `网络错误: ${e}`);
+  }
 }
 
 function _applyClientSelected(name, sessionId) {
   STATE.currentClient = name;
   STATE.currentSession = sessionId;
   updateSessionPill(true, sessionId);
-  // 确保客户出现在下拉菜单中
   const sel = $("#clientSelect");
   if (!Array.from(sel.options).find(o => o.value === name)) {
     const opt = document.createElement("option");
@@ -139,26 +151,37 @@ async function sendMessage() {
 }
 
 // ────────────────────────────────────────────────────────────
-// WebSocket
+// WebSocket — 加调试日志
 // ────────────────────────────────────────────────────────────
 
 function connectWS() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws`);
-  ws.onopen = () => addEvent("system", "已连接控制台");
+  ws.onopen = () => {
+    console.log("[WS] connected");
+    addEvent("system", "已连接控制台");
+  };
   ws.onclose = () => {
+    console.log("[WS] disconnected, reconnect in 3s");
     addEvent("error", "连接断开，3 秒后重连…");
     setTimeout(connectWS, 3000);
   };
-  ws.onerror = () => {};
-  ws.onmessage = (e) => { try { handleEvent(JSON.parse(e.data)); } catch {} };
+  ws.onerror = (err) => { console.error("[WS] error:", err); };
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      console.log("[WS]", msg.type, msg.agent || "", (msg.text || "").slice(0, 30));
+      handleEvent(msg);
+    } catch (err) {
+      console.error("[WS] parse error:", err);
+    }
+  };
 }
 
 function handleEvent(msg) {
   const t = msg.type;
 
   if (t === "hello") {
-    // 恢复服务端最新状态（重载页面后用）
     const s = msg.state || {};
     populateClientSelect(msg.clients || [], s.current_client);
     if (s.current_client) {
@@ -173,7 +196,7 @@ function handleEvent(msg) {
     return;
   }
 
-  if (t === "user_message") return; // 已在 sendMessage 里显示
+  if (t === "user_message") return;
 
   if (t === "turn_started") {
     setTurnActive(true);
@@ -256,13 +279,77 @@ function handleEvent(msg) {
   }
 
   if (t === "client_selected") {
-    addEvent("system", `客户「${esc(msg.client)}」session ···${(msg.session_id || "").slice(-6)}`);
+    addEvent("system", `客户「${esc(msg.client)}」`);
+    return;
+  }
+
+  if (t === "history_loaded") {
+    const msgs = msg.messages || [];
+    for (const m of msgs) {
+      if (m.role === "user") {
+        addChat("user", m.content);
+      } else if (m.role === "assistant") {
+        addChat("agent", m.content, "唐僧");
+      }
+    }
+    addEvent("系统", `已恢复 ${msgs.length} 条历史消息`);
+    return;
+  }
+
+  if (t === "session_state") {
+    const s = msg.state || {};
+    const stageLabels = {init:"初始",prd:"PRD",tech_spec:"技术方案",code:"编码",test:"测试",customer_success:"客户成功",done:"✅ 完成"};
+    const stage = stageLabels[s.stage] || s.stage || "?";
+    addEvent("system", `📍 阶段: ${stage} | 已完成: ${(s.completed||[]).join(',') || '无'}`);
     return;
   }
 }
 
 // ────────────────────────────────────────────────────────────
-// 发送锁定
+// 右侧面板拖拽调整宽度
+// ────────────────────────────────────────────────────────────
+
+function initResize() {
+  const layout = $(".layout");
+  const sidebar = $(".sidebar");
+  const handle = document.createElement("div");
+  handle.className = "resize-handle";
+  handle.style.right = "0";
+  layout.appendChild(handle);
+
+  let dragging = false;
+  let startX = 0;
+  let startW = 0;
+
+  handle.addEventListener("mousedown", (e) => {
+    dragging = true;
+    startX = e.clientX;
+    startW = sidebar.getBoundingClientRect().width;
+    handle.classList.add("active");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const dx = startX - e.clientX;
+    const newW = Math.max(280, Math.min(600, startW + dx));
+    layout.style.gridTemplateColumns = `1fr ${newW}px`;
+    redrawFlowLines();
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove("active");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  });
+}
+
+// ────────────────────────────────────────────────────────────
+// 状态管理
 // ────────────────────────────────────────────────────────────
 
 function setTurnActive(active) {
@@ -275,10 +362,6 @@ function setTurnActive(active) {
     ? "团队正在取经，请等候…"
     : "向唐僧描述客户需求…\n或粘贴录音文字稿，唐僧会派徒弟们各司其职。";
 }
-
-// ────────────────────────────────────────────────────────────
-// Agent 卡片状态
-// ────────────────────────────────────────────────────────────
 
 const STATUS_LABEL = {
   idle: "待命", thinking: "思考中", working: "工作中",
@@ -314,7 +397,7 @@ function drawFlow(from, to, direction) {
     STATE.flowLines.set(key, info);
   }
   info.direction = direction;
-  info.el.className.baseVal = "flow-line " + direction; // refresh class if direction changed
+  info.el.className.baseVal = "flow-line " + direction;
   info.expiresAt = Date.now() + 5000;
   info.fading = false;
   _updatePath(info.el, from, to);
@@ -329,7 +412,6 @@ function _updatePath(pathEl, fromName, toName) {
   svg.setAttribute("viewBox", `0 0 ${svgBox.width} ${svgBox.height}`);
   const a = cardCenter(fromCard, svgBox);
   const b = cardCenter(toCard, svgBox);
-  // 贝塞尔曲线 — 弯度像水墨笔触
   const dx = b.x - a.x, dy = b.y - a.y;
   const cx = (a.x + b.x) / 2 + dy * 0.25;
   const cy = (a.y + b.y) / 2 - dx * 0.25;
@@ -348,10 +430,7 @@ function cleanupFlowLines() {
       info.fading = true;
       info.el.style.transition = "opacity 1s";
       info.el.style.opacity = "0";
-      setTimeout(() => {
-        info.el.remove();
-        STATE.flowLines.delete(key);
-      }, 1000);
+      setTimeout(() => { info.el.remove(); STATE.flowLines.delete(key); }, 1000);
     }
   }
 }
@@ -383,7 +462,6 @@ function addChat(kind, text, who) {
   el.appendChild(body);
   log.appendChild(el);
   log.scrollTop = log.scrollHeight;
-  // 普通消息之后清空流式引用
   lastAgentMsgEl = null; lastAgentMsgName = null;
 }
 
@@ -404,6 +482,7 @@ function appendAgentChat(who, text) {
   } else {
     lastAgentMsgEl.textContent += text;
   }
+  // 自动滚动到底部
   log.scrollTop = log.scrollHeight;
 }
 
@@ -416,7 +495,9 @@ async function refreshFiles() {
   try {
     const files = await fetch("/api/files").then(r => r.json());
     renderFiles(files);
-  } catch {}
+  } catch (e) {
+    console.error("refreshFiles:", e);
+  }
 }
 
 function renderFiles(files) {

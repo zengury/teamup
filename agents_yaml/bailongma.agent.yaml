@@ -1,5 +1,5 @@
 name: 白龙马
-model: claude-sonnet-4-6
+model: deepseek-chat
 system_prompt_file: prompts/bailongma.md
 tools:
   - type: agent_toolset_20260401
